@@ -41,7 +41,10 @@ sudo modprobe mb86H_usb
 機器を接続すると `/dev/dvb/xz0/frontend0`、 `/dev/dvb/torne0/frontend0` または `/dev/dvb/dt2950/frontend0` が作成されます。
 同じ機種が複数ある場合は番号が増えます。CCID 用の仮想 USB コントローラーはリーダー数に合わせて用意してください。
 
-録画には標準 Linux DVB に対応した recisdb などを別途使用します。例では地上波 24ch を 10 秒録画します。
+録画には標準 Linux DVB に対応した recisdb などを別途使用します。ただし `/dev/dvb/xz0` のようなデバイス名を使うには [makeding/recisdb-rs](https://github.com/makeding/recisdb-rs) のフォークが必要です。  
+本家では `/dev/dvb/adapter0/frontend0`、`/dev/dvb/adapter1/frontend0` 形式のみ利用できます。  
+
+例では地上波 24ch を 10 秒録画します。
 
 ```sh
 recisdb tune --device /dev/dvb/xz0/frontend0 --channel 24 --time 10 --no-decode --no-strip sample.ts
@@ -50,11 +53,6 @@ recisdb tune --device /dev/dvb/xz0/frontend0 --channel 24 --time 10 --no-decode 
 受信地域に合わせてチャンネルを変更してください。`--no-decode` の出力は復号していない TS です。
 
 ## Mirakurun
-
-torne は電源投入後の初回校正に **5 秒以上**かかることがあります。
-Mirakurun の初回 TS 待ちが 5 秒に固定されている版では、[付属パッチ](integrations/mirakurun/README.md)で
-**初回 TS 待ちを 15 秒、HTTP idle timeout を 30 秒**に変更してください。
-既存の `tuners.yml` に timeout を追加するだけでは変更できません。
 
 `tuners.yml` の例です。recisdb を Mirakurun の実行ユーザーから使えるようにしてください。
 
