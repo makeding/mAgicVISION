@@ -168,8 +168,6 @@ static int exchange(void *opaque, const uint8_t request[64], uint8_t response[64
     } else if (address == MB86H_RESIDENT_COMMAND_RECOVER) {
         m->recover_calls++;
         if (m->recover_error) return m->recover_error;
-        /* Poison the old STATUS-layout bytes: recovery completion is v1
-         * DEVICE_QUERY state, never these legacy offsets. */
         response[26] = response[62] = response[63] = 0xa5;
         if (!(m->recover_calls % 3)) m->initialized = false;
     } else if (address == MB86H_RESIDENT_COMMAND_SHUTDOWN) {
