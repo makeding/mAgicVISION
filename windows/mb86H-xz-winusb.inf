@@ -1,0 +1,27 @@
+; Development INF template. A signed CAT is required for normal installation.
+; For local testing, bind only 04bb:0530 to WinUSB with Zadig.
+[Version]
+Signature="$Windows NT$"
+Class=USBDevice
+ClassGuid={88BAE032-5A81-49F0-BC3D-A4FF138216D6}
+Provider=%Provider%
+CatalogFile=mb86H-xz-winusb.cat
+DriverVer=11/01/2026,1.0.0.0
+PnpLockdown=1
+[Manufacturer]
+%Provider%=Devices,NTamd64
+[Devices.NTamd64]
+%Device%=USB_Install,USB\VID_04BB&PID_0530
+[USB_Install]
+Include=winusb.inf
+Needs=WINUSB.NT
+[USB_Install.Services]
+Include=winusb.inf
+Needs=WINUSB.NT.Services
+[USB_Install.HW]
+AddReg=Interface
+[Interface]
+HKR,,DeviceInterfaceGUIDs,0x10000,"{F2F6C45E-AF63-4771-B56F-0469C135FC0B}"
+[Strings]
+Provider="mb86H"
+Device="I-O DATA GV-MVP/XZ ISDB-T/S Tuner"

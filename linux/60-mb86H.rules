@@ -1,0 +1,7 @@
+# Physical receivers and the kernel-provided virtual CCID reader.
+SUBSYSTEM=="usb", ATTR{idVendor}=="04bb", ATTR{idProduct}=="0530", GROUP="video", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="054c", ATTR{idProduct}=="04b2", GROUP="video", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="06b8", ATTR{idProduct}=="103b", GROUP="video", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1209", ATTR{idProduct}=="0001", MODE="0660", TAG+="uaccess"
+# The physical owner allocates indices independently for each model.
+SUBSYSTEM=="dvb", ATTRS{mb86H_alias}=="?*", SYMLINK+="dvb/$attr{mb86H_alias}/$env{DVB_DEVICE_TYPE}$env{DVB_DEVICE_NUM}"

@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+case "$1" in
+  configure)
+    /usr/lib/dkms/common.postinst magicvision '@VERSION@' '' '' "${2-}"
+    /usr/lib/magicvision/ccid-metadata --apply --state /var/lib/magicvision/ccid-metadata.json
+    if command -v udevadm >/dev/null 2>&1; then
+      udevadm control --reload-rules || true
+    fi
+    ;;
+  triggered)
+    /usr/lib/magicvision/ccid-metadata --apply --state /var/lib/magicvision/ccid-metadata.json
+    ;;
+esac
+exit 0
