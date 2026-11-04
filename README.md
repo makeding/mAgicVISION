@@ -28,10 +28,26 @@ mAgicVISION は、mb86 系テレビチューナー向けのドライバーです
 - BonDriver対応
 
 ## インストール（Debian / Ubuntu）
-リリースで
+[GitHub Releases](https://github.com/makeding/mAgicVISION/releases) から `firmware` と `dkms` の2つの `.deb` をダウンロードします。
 ```sh
 sudo apt install linux-headers-$(uname -r)
 sudo apt install ./magicvision-firmware_*_all.deb ./magicvision-usb-dkms_*_all.deb
+```
+
+## インストール（NixOS）
+
+NixOS では [jodtv-packages](https://github.com/makeding/jodtv-packages) の flake モジュールからインストールできます。
+
+```nix
+inputs.jodtv-packages = {
+  url = "github:makeding/jodtv-packages";
+  inputs.nixpkgs.follows = "nixpkgs";
+};
+
+imports = [
+  inputs.jodtv-packages.nixosModules.packages
+  inputs.jodtv-packages.nixosModules.dtv
+];
 ```
 
 ## Linux DVB で使う
