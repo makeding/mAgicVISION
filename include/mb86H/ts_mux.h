@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef MB86H_TS_MUX_H
 #define MB86H_TS_MUX_H
 #include "mb86H/ts_framer.h"

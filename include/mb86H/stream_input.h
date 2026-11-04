@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef MB86H_STREAM_INPUT_H
 #define MB86H_STREAM_INPUT_H
 

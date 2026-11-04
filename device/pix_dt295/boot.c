@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "boot.h"
 #include "mb86H/regs.h"
 

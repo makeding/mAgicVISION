@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "mb86H/usb/boot.h"
 #ifdef __KERNEL__
 #include <linux/errno.h>

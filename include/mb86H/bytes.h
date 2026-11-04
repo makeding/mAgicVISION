@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Big-endian word helpers shared by core and userland.  Header-only so the
  * same definitions serve the Linux module and the userspace test binaries. */
 #ifndef MB86H_BYTES_H

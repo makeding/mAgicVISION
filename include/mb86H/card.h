@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Semantic smart-card v2 client. The transport serializes each command. */
 #ifndef MB86H_CARD_H
 #define MB86H_CARD_H

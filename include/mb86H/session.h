@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Transport-neutral resident command session. */
 #ifndef MB86H_SESSION_H
 #define MB86H_SESSION_H

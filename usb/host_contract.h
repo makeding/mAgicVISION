@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Private host-side transport facts.  These are USB plumbing, not firmware
  * control: channel selection and device state remain semantic FW commands. */
 #ifndef USB_HOST_CONTRACT_H

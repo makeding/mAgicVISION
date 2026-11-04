@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Real PC/SC service acceptance, separate from direct IFD dlopen testing. */
 #ifdef __APPLE__
 #include <PCSC/wintypes.h>

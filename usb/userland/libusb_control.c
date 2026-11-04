@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "libusb_internal.h"
 
 #ifdef USB_LIBUSB_TESTING

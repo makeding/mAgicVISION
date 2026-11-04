@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "mb86H/card.h"
 #include "mb86H/protocol.h"
 #ifdef __KERNEL__

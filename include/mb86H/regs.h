@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Chip register addresses shared by the USB and PCIe paths.  Each address is
  * one physical register; the names follow the first user and the comment
  * lists the other call sites so the aliases stay discoverable. */

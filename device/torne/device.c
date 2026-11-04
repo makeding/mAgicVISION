@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "mb86H/device.h"
 
 static const struct mb86H_device_info sony_torne = {

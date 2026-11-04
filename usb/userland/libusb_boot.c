@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "libusb_internal.h"
 
 static int native_control(void *opaque, const struct usb_window_control *control,

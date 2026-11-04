@@ -86,7 +86,11 @@ Linux のカーネルドライバーとユーザーランドから同じ物理 U
 PC/SC IFD のビルドと外部ファームウェアの配置方法は [PC/SC の説明](userland/pcsc/README.ja.md)を参照してください。
 
 ## ライセンス
-[**GPL-2.0**](LICENSE)
+
+- Linux カーネル用コード（`linux/`、`usb/linux/`）は [GPL-2.0-only](LICENSE) です。
+- userland とその再利用可能な共有コード（`core/`、`device/`、`include/mb86H/`、`usb/boot.c`、`usb/window.c`、`usb/host_contract.h`、`usb/userland/`、`userland/`）は [MIT](LICENSE-MIT) です。対象ソースには `SPDX-License-Identifier: MIT` を記載しています。
+- Linux カーネルモジュールに共有コードを組み込んで配布する場合、モジュール全体は GPL-2.0-only の条件で配布します。
+- `firmware.bin` などのファームウェア成果物は再配布できます。
 
 
 Made with ❤️  

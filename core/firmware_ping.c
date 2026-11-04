@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "mb86H/firmware_ping.h"
 
 #ifdef __KERNEL__

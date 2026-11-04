@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef MB86H_DEVICE_QUERY_WIRE_H
 #define MB86H_DEVICE_QUERY_WIRE_H
 #ifdef __KERNEL__

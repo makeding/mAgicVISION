@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #define _POSIX_C_SOURCE 200809L
 #include "ifd_abi.h"
 #include "mb86H/card.h"

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Native USB bootstrap hooks selected by the device registry. */
 #ifndef MB86H_USB_BOOT_H
 #define MB86H_USB_BOOT_H

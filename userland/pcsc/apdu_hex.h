@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef MB86H_PCSC_APDU_HEX_H
 #define MB86H_PCSC_APDU_HEX_H
 #include <ctype.h>

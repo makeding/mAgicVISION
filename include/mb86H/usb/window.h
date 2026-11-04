@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef USB_WINDOW_H
 #define USB_WINDOW_H
 

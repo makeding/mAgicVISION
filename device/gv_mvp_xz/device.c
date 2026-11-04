@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "mb86H/device.h"
 #include "mb86H/protocol/constants.h"
 #include "mb86H/usb/boot.h"

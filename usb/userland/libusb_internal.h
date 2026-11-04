@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Private state and cross-unit helpers for the libusb backend.  Included only
  * by usb/userland/libusb_*.c; the public surface stays in mb86H/usb/libusb.h. */
 #ifndef MB86H_USB_LIBUSB_INTERNAL_H

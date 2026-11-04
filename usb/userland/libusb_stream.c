@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "libusb_internal.h"
 
 static void transfer_done(struct libusb_transfer *transfer)

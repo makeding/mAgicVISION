@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Read-only XZ boot0 observation. Firmware loading belongs to core/loader.c. */
 #include "mb86H/usb/boot.h"
 #include "mb86H/regs.h"

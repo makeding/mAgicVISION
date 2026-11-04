@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef MB86H_DEBUG_PROTOCOL_CORE_H
 #define MB86H_DEBUG_PROTOCOL_CORE_H
 

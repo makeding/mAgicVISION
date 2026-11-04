@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef USB_LIBUSB_H
 #define USB_LIBUSB_H
 

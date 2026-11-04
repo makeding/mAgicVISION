@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef MB86H_TS_RECEIVER_CORE_H
 #define MB86H_TS_RECEIVER_CORE_H
 

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "mb86H/loader.h"
 #ifdef __KERNEL__
 #include <linux/errno.h>

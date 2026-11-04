@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* One bounded native-image download. No transport or device policy here. */
 #ifndef MB86H_NATIVE_DOWNLOAD_H
 #define MB86H_NATIVE_DOWNLOAD_H

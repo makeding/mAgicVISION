@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Common resident loader; buses provide the bounded memory window operations. */
 #ifndef MB86H_LOADER_H
 #define MB86H_LOADER_H

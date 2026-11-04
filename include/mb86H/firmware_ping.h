@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef MB86H_FIRMWARE_PING_H
 #define MB86H_FIRMWARE_PING_H
 

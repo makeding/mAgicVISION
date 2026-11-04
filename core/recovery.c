@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Reattach to an exact known USB image after the previous host disappeared.
  * No saved pre-crash bytes are fabricated and no unknown entry is executed. */
 #include "mb86H/loader.h"

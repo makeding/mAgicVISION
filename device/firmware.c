@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "mb86H/device.h"
 #include "mb86H/loader.h"
 #include "mb86H/resident_image.h"

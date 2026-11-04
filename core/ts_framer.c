@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "mb86H/ts_framer.h"
 
 #ifdef __KERNEL__

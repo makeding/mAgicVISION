@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef MB86H_DEVICE_QUERY_H
 #define MB86H_DEVICE_QUERY_H
 #include "mb86H/session.h"

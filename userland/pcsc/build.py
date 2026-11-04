@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Build a self-contained release-FW IFD bundle, never compile firmware."""
 import argparse,hashlib,json,plistlib,subprocess,sys,shutil,re
 from pathlib import Path

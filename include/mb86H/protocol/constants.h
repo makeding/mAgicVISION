@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef USB_FW_CONSTANTS_H
 #define USB_FW_CONSTANTS_H
 

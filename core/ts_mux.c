@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "mb86H/ts_mux.h"
 #include "mb86H/bytes.h"
 

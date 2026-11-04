@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef MB86H_TRANSPORT_H
 #define MB86H_TRANSPORT_H
 #ifdef __KERNEL__

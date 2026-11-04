@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "libusb_internal.h"
 
 static bool supported_target(uint16_t vendor, uint16_t product)

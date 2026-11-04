@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "libusb_internal.h"
 
 static int transport_receive_start(void *opaque, uint8_t *buffer, size_t size,

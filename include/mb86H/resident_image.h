@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Transport-neutral resident image upload protocol. */
 #ifndef MB86H_RESIDENT_IMAGE_H
 #define MB86H_RESIDENT_IMAGE_H

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef MB86H_IFD_ABI_H
 #define MB86H_IFD_ABI_H
 /* Public IFD Handler v3 entry ABI. macOS SDK omits ifdhandler.h. */

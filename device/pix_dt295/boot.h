@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef MB86H_PIX_DT295_BOOT_H
 #define MB86H_PIX_DT295_BOOT_H
 

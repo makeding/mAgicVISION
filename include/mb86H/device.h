@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Device-specific match and loader contract. */
 #ifndef MB86H_DEVICE_H
 #define MB86H_DEVICE_H

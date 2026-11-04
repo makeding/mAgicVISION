@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "mb86H/frontend.h"
 
 int mb86H_dvb_caps_valid(const struct mb86H_dvb_caps caps[MB86H_CHANNEL_COUNT])

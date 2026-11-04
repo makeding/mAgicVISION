@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "mb86H/device.h"
 
 const struct mb86H_device_info *mb86H_device_find(uint16_t vendor, uint16_t product)

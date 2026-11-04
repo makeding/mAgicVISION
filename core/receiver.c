@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "mb86H/receiver_core.h"
 
 #ifdef __KERNEL__

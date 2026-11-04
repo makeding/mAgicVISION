@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Native bootstrap inspection over the same libusb owner as the receiver. */
 #define _POSIX_C_SOURCE 200809L
 #include "mb86H/device.h"

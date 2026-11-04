@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "mb86H/stream_input.h"
 
 struct stream_payload {
