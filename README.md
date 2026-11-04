@@ -7,16 +7,16 @@ mAgicVISION は、mb86 系テレビチューナー向けのドライバーです
 
 ## 対象機器
 
-| 機器 | USB ID | 対象方式 |
-| --- | --- | --- |
-| I社 GV-MVP/XZ〜XZ3 | `04bb:0530` | ISDB-T/ISDB-S |
-| S社 torne CECH-ZD1 J | `054c:04b2` | ISDB-T |
-| P社 PIX-DT295| `04bb:0530` | ISDB-T/ISDB-S |
+| 機器 | USB ID | 対象方式 | チップ |
+| --- | --- | --- | --- |
+| I社 GV-MVP/XZ〜XZ3 | `04bb:0530` | ISDB-T/ISDB-S | MB86H58A |
+| S社 torne CECH-ZD1 J | `054c:04b2` | ISDB-T | MB86H47A |
+| P社 PIX-DT295| `04bb:0530` | ISDB-T/ISDB-S | MB86M01 |
 
 
 * それぞれ１チューナーになります
 
-## 対応リクエストについて
+### 対応リクエストについて
 対応機種をさらに増やしていきたいと考えておりますが、新規機器の検証にはどうしても実機が必要となり、現時点ではリモートでの対応がかないません。  
 もし対応をご希望いただけるようでしたら、お手数ですが対象機器をこちらまでお送りいただけないでしょうか。
 
@@ -41,7 +41,6 @@ NixOS では [jodtv-packages](https://github.com/makeding/jodtv-packages) の fl
 ```nix
 inputs.jodtv-packages = {
   url = "github:makeding/jodtv-packages";
-  inputs.nixpkgs.follows = "nixpkgs";
 };
 
 imports = [
