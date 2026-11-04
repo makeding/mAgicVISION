@@ -51,10 +51,8 @@ sudo modprobe mb86H_usb
 例では地上波 24ch を 10 秒録画します。
 
 ```sh
-recisdb tune --device /dev/dvb/xz0/frontend0 --channel 24 --time 10 --no-decode --no-strip sample.ts
+recisdb tune --device /dev/dvb/xz0/frontend0 --channel T24 --time 10  sample.ts
 ```
-
-受信地域に合わせてチャンネルを変更してください。`--no-decode` の出力は復号していない TS です。
 
 ## Mirakurun
 
@@ -63,7 +61,7 @@ recisdb tune --device /dev/dvb/xz0/frontend0 --channel 24 --time 10 --no-decode 
 ```yaml
 - name: mAgicVISION torne
   types: [GR]
-  command: recisdb tune --device /dev/dvb/torne0/frontend0 --channel <channel> --no-decode --no-strip -
+  command: recisdb tune --device /dev/dvb/torne0/frontend0 --channel <channel> -
   checkDevicePath: /dev/dvb/torne0/frontend0
 
 - name: mAgicVISION XZ
@@ -89,7 +87,8 @@ recisdb tune --device /dev/dvb/xz0/frontend0 --channel 24 --time 10 --no-decode 
 | torne | GR24 | 17.25 MB | 0 / 0 / 0 |
 | PIX-DT295 | BS15_0 | 23.90 MB | 0 / 0 / 0 |
 
-3件とも録画コマンドは終了コード 0、PAT CRC は有効、末尾の不完全 TS データはありません。各8秒の個別測定であり、同時録画や長時間安定性の測定ではありません。
+3件とも録画コマンドは終了コード 0、PAT CRC は有効、末尾の不完全 TS データはありません。  
+各8秒の個別測定であり、同時録画や長時間安定性の測定ではありません。
 
 ### DT295 のチャンネル切り替え
 
