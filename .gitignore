@@ -37,3 +37,4 @@ __pycache__/
 Module.symvers
 modules.order
 !README.md
+!README.EN.md

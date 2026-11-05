@@ -1,3 +1,5 @@
+日本語 | [English](README.EN.md)
+
 <p align="center"><img src="assets/banner.png" width="960" alt="マジックビジョン — mAgic VISION — 魔法映像"></p>
 
 mAgicVISION は、mb86 系テレビチューナー向けのドライバーです。  
@@ -11,7 +13,7 @@ mAgicVISION は、mb86 系テレビチューナー向けのドライバーです
 | --- | --- | --- | --- |
 | I社 GV-MVP/XZ〜XZ3 | `04bb:0530` | ISDB-T/ISDB-S | MB86H58A |
 | S社 torne CECH-ZD1 J | `054c:04b2` | ISDB-T | MB86H47A |
-| P社 PIX-DT295| `04bb:0530` | ISDB-T/ISDB-S | MB86M01 |
+| P社 PIX-DT295| `06b8:103b` | ISDB-T/ISDB-S | MB86M01 |
 
 
 * それぞれ１チューナーになります
@@ -128,8 +130,6 @@ Linux のカーネルドライバーとユーザーランドから同じ物理 U
 ./build/usbctl devices
 ./build/usbboot check-image 04bb 0530 firmware/firmware.bin
 ```
-
-PC/SC IFD のビルドと外部ファームウェアの配置方法は [PC/SC の説明](userland/pcsc/README.ja.md)を参照してください。
 
 ## ライセンス
 
