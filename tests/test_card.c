@@ -25,7 +25,7 @@ static int command(void *p, unsigned op, const uint8_t data[40], uint8_t rx[64])
     rx[39] = !f->absent;rx[38] = f->state != 0;
     if (f->rejected) {
         mb86H_debug_u32be_put(rx + 8, MB86H_DEBUG_FATAL);
-        mb86H_debug_u32be_put(rx + 20, (uint32_t)-2600);
+        mb86H_debug_u32be_put(rx + 20, (uint32_t)f->rejected);
         rx[24] = 0; /* Runtime rejects before card dispatcher. */
         return 0;
     }
@@ -102,9 +102,12 @@ int main(void)
     calls = f.calls; f.transport = 0;
     assert(mb86H_card_power_off(&card) == -EPIPE && f.calls == calls);
 
-    mb86H_card_init(&card, &ops, &f); f.rejected = 1; n = sizeof atr;
+    mb86H_card_init(&card, &ops, &f); f.rejected = MB86H_FE_INVALID; n = sizeof atr;
+    assert(mb86H_card_power_on(&card, atr, &n) == -EINVAL);
+    assert(!card.failed && card.firmware_result == MB86H_FE_INVALID);
+    mb86H_card_init(&card, &ops, &f); f.rejected = MB86H_FE_BUSY; n = sizeof atr;
     assert(mb86H_card_power_on(&card, atr, &n) == -EBUSY);
-    assert(!card.failed && card.firmware_result == -2600);
+    assert(!card.failed && card.firmware_result == MB86H_FE_BUSY);
     f.rejected = 0; f.malformed = 1; n = sizeof atr;
     assert(mb86H_card_power_on(&card, atr, &n) == -EPROTO);
     calls = f.calls;

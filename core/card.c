@@ -19,11 +19,12 @@ void mb86H_card_init(struct mb86H_card *c,
 static int result(int rc)
 {
     switch (rc) {
-    case -2600: return -EBUSY;
-    case -2601: return -EOPNOTSUPP;
-    case -2602: return -EIO;
-    case -2603: return -ETIMEDOUT;
-    case -2604: return -EMSGSIZE;
+    case MB86H_FE_INVALID: return -EINVAL;      /* precondition or argument rejected */
+    case MB86H_FE_BUSY: return -EBUSY;          /* already owned by an active session */
+    case MB86H_FE_UNSUPPORTED: return -EOPNOTSUPP;
+    case MB86H_FE_IO: return -EIO;
+    case MB86H_FE_TIMEOUT: return -ETIMEDOUT;
+    case MB86H_FE_EXHAUSTED: return -EMSGSIZE;
     default: return rc;
     }
 }

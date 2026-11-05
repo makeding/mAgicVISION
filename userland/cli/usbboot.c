@@ -2,6 +2,7 @@
 /* Native bootstrap inspection over the same libusb owner as the receiver. */
 #define _POSIX_C_SOURCE 200809L
 #include "mb86H/device.h"
+#include "mb86H/card.h"
 #include "mb86H/usb/libusb.h"
 #include "mb86H/loader.h"
 #include "mb86H/device_query.h"
@@ -532,7 +533,8 @@ static int capture_firmware(struct firmware_context *ctx,
 static int download_firmware(struct usb_device *device, struct mb86H_loader *loader,
                               struct log_context *log, const char *directory,
                               const struct mb86H_loader *alternative,
-                              bool initialize, const struct capture_options *capture_options, unsigned capture_count)
+                              bool initialize,
+                              const struct capture_options *capture_options, unsigned capture_count)
 {
     const struct mb86H_loader original = *loader;
     struct firmware_context ctx = {.device = device, .log = log, .directory = directory};
@@ -760,7 +762,8 @@ int main(int argc, char **argv)
     rc = usb_libusb_observe_control(device, observe, &log);
     if (rc) goto done;
     if (download) {
-        rc = download_firmware(device, &loader, &log, directory, ota?&alternative:NULL, start || record, record?recording:NULL, capture_count);
+        rc = download_firmware(device, &loader, &log, directory, ota?&alternative:NULL,
+                               start || record, record?recording:NULL, capture_count);
         goto done;
     } else rc = prepare ? usb_libusb_prepare_boot0(device, &result) :
                    usb_libusb_observe_boot0(device, &result);
