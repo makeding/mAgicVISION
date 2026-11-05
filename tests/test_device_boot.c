@@ -51,7 +51,7 @@ int main(void)
                      .ready_second = 4u, .pending = 0x80u};
     struct usb_boot_result result;
     device = mb86H_device_find(0x06b8u, 0x103bu);
-    CHECK(device && !strcmp(device->name, "PIX-DT295") &&
+    CHECK(device && !strcmp(device->name, "PIXELA PIX-DT295 ISDB-T/S Tuner") &&
           device->frontend_count == 1 &&
           device->delivery_systems == ((1U << MB86H_DVB_GR) | (1U << MB86H_DVB_BSCS)) &&
           device->runtime_protocol == MB86H_RUNTIME_RESIDENT_V1 &&
@@ -102,6 +102,10 @@ int main(void)
     device = mb86H_device_find(0x06b8u, 0x103bu);
     CHECK(device && device->firmware_target == MB86H_FIRMWARE_DT295);
     device = mb86H_device_find(0x06b8u, 0x103cu);
-    CHECK(device && device->firmware_target == MB86H_FIRMWARE_NONE);
+    CHECK(device && !strcmp(device->name, "PIXELA PIX-DT295W ISDB-T/S Tuner") &&
+          device->firmware_target == MB86H_FIRMWARE_NONE);
+    CHECK(!strcmp(mb86H_device_name(0x04c5u, 0x202fu), "PIXELA PIX-DTxxx ISDB-T/S Tuner"));
+    CHECK(!strcmp(mb86H_device_name(0x06b8u, 0x1038u), "PIXELA PIX-DT420 ISDB-T/S Tuner"));
+    CHECK(!strcmp(mb86H_device_name(0x06b8u, 0x1039u), "PIXELA PIX-DT410 ISDB-T/S Tuner"));
     return 0;
 }
