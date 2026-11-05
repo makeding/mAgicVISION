@@ -6,12 +6,14 @@
 #include "mb86H/loader.h"
 #include "mb86H/receiver_core.h"
 #include "mb86H/ts_mux.h"
+#include "mb86H/usb/window.h"
 struct xz_host {
     HANDLE file, stop, ready, worker, service_worker;
     WINUSB_INTERFACE_HANDLE usb;
     CRITICAL_SECTION queue_lock, log_lock, command_lock;
     struct mb86H_loader loader;
     struct mb86H_session session;
+    struct usb_xz_read_cache xz_read_cache;
     struct mb86H_ts_receiver_core receiver;
     struct mb86H_ts_mux mux;
     uint8_t *bundle, *storage;

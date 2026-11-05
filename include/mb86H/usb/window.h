@@ -67,6 +67,11 @@ int usb_xz_window(const struct usb_native_ops *, void *, uint32_t,
                   void *, size_t, bool writing);
 int usb_xz_exchange(const struct usb_native_ops *, void *,
                     const uint8_t request[64], uint8_t response[64]);
+/* One physical owner, under its control lock. Invalidate before any other
+ * native control/window operation. Only exact BLOCK read replies are cached. */
+struct usb_xz_read_cache { bool valid; uint8_t packet[64]; };
+int usb_xz_exchange_cached(const struct usb_native_ops *, void *,
+    struct usb_xz_read_cache *, const uint8_t request[64], uint8_t response[64]);
 int usb_torne_window(const struct usb_native_ops *, void *, uint32_t,
                      void *, size_t, bool writing, bool block_writes);
 int usb_torne_exchange(const struct usb_native_ops *, void *,

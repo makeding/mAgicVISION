@@ -15,14 +15,16 @@ static uint32_t resident_offset(uint32_t address)
 {
     return address - MB86H_RESIDENT_BASE;
 }
+static void observe(const struct mb86H_resident_image_ops *ops,void *opaque,
+                    enum mb86H_loader_stage stage,int began,int status)
+{ if(ops && ops->observe) ops->observe(opaque,&(struct mb86H_loader_observation){stage,began,status}); }
 
 int mb86H_resident_image_validate(const uint8_t *image)
 {
     const uint8_t *meta;
     uint32_t offset, sum = 0;
 
-    if (!image)
-        return -EINVAL;
+    if (!image) return -EINVAL;
     meta = image + resident_offset(MB86H_RESIDENT_META);
     if (mb86H_be32_get(meta) != MB86H_RESIDENT_HEADER_MAGIC ||
         mb86H_be32_get(meta + 4) != MB86H_RESIDENT_ABI_VERSION ||
@@ -76,8 +78,8 @@ int mb86H_resident_image_verify(const struct mb86H_resident_image_ops *ops,
     uint32_t offset, i, commit = resident_offset(MB86H_RESIDENT_COMMIT);
     int rc;
 
-    if (!image)
-        return -EINVAL;
+    observe(ops,opaque,MB86H_LOADER_READBACK,1,0);
+    if (!image) { observe(ops,opaque,MB86H_LOADER_READBACK,0,-EINVAL); return -EINVAL; }
     for (offset = 0; offset < MB86H_RESIDENT_BYTES; offset += sizeof(got)) {
         uint32_t length = MB86H_RESIDENT_BYTES - offset;
         if (length > sizeof(got))
@@ -85,17 +87,17 @@ int mb86H_resident_image_verify(const struct mb86H_resident_image_ops *ops,
         rc = mb86H_resident_image_block(ops, opaque, offset, false, 0, got,
                                            length);
         if (rc)
-            return rc;
+            { observe(ops,opaque,MB86H_LOADER_READBACK,0,rc); return rc; }
         for (i = 0; i < length; ++i)
             if ((!skip_commit || offset + i < commit || offset + i >= commit + 4) &&
                 got[i] != image[offset + i]) {
                 if (ops->mismatch)
                     ops->mismatch(opaque, MB86H_RESIDENT_BASE + offset + i,
                                   image[offset + i], got[i]);
-                return -EIO;
+                { observe(ops,opaque,MB86H_LOADER_READBACK,0,-EIO); return -EIO; }
             }
     }
-    return 0;
+    observe(ops,opaque,MB86H_LOADER_READBACK,0,0); return 0;
 }
 
 int mb86H_resident_image_program(const struct mb86H_resident_image_ops *ops,
@@ -105,9 +107,9 @@ int mb86H_resident_image_program(const struct mb86H_resident_image_ops *ops,
     uint32_t offset, commit_offset = resident_offset(MB86H_RESIDENT_COMMIT);
     int rc;
 
+    observe(ops,opaque,MB86H_LOADER_WRITE,1,0);
     rc = mb86H_resident_image_validate(image);
-    if (rc)
-        return rc;
+    if (rc) { observe(ops,opaque,MB86H_LOADER_WRITE,0,rc); return rc; }
     rc = mb86H_resident_image_block(ops, opaque, commit_offset, true, zero,
                                        0, sizeof(zero));
     for (offset = 0; !rc && offset < MB86H_RESIDENT_BYTES;
@@ -129,18 +131,16 @@ int mb86H_resident_image_program(const struct mb86H_resident_image_ops *ops,
                                                image + offset, 0, length);
         }
     }
-    if (rc)
-        return rc;
+    if (rc) { observe(ops,opaque,MB86H_LOADER_WRITE,0,rc); return rc; }
+    observe(ops,opaque,MB86H_LOADER_WRITE,0,0);
     rc = mb86H_resident_image_verify(ops, opaque, image, true);
-    if (rc)
-        return rc;
+    if (rc) return rc;
+    observe(ops,opaque,MB86H_LOADER_COMMIT,1,0);
     rc = mb86H_resident_image_block(ops, opaque, commit_offset, true,
                                        image + commit_offset, 0, sizeof(commit));
-    if (rc)
-        return rc;
+    if (rc) { observe(ops,opaque,MB86H_LOADER_COMMIT,0,rc); return rc; }
     rc = mb86H_resident_image_block(ops, opaque, commit_offset, false, 0,
                                        commit, sizeof(commit));
-    if (rc || memcmp(commit, image + commit_offset, sizeof(commit)))
-        return rc ? rc : -EIO;
-    return 0;
+    rc=rc ? rc : (memcmp(commit,image+commit_offset,sizeof(commit))?-EIO:0);
+    observe(ops,opaque,MB86H_LOADER_COMMIT,0,rc); return rc;
 }

@@ -16,6 +16,7 @@ typedef u32 uint32_t;
 
 #include "mb86H/session.h"
 #include "mb86H/bootstrap.h"
+#include "mb86H/resident_image.h"
 
 struct mb86H_loader;
 struct mb86H_loader_ops {
@@ -33,6 +34,9 @@ struct mb86H_loader_ops {
     int (*block_writes)(void *opaque, bool enable);
     int (*snapshot)(void *opaque, const struct mb86H_loader *loader);
     void (*mismatch)(void *opaque, uint32_t address, uint32_t expected, uint32_t observed);
+    mb86H_loader_observe observe;
+    /* Explicit reversible RAM experiment; normal power-up saves patches only. */
+    bool preserve_all_ram;
 };
 
 struct mb86H_native_boot_profile {
@@ -49,7 +53,9 @@ struct mb86H_loader {
     struct mb86H_bootstrap bootstrap;
     uint32_t boot0_bytes;
     bool compact_bootstrap;
+    bool preserve_all_ram;
     uint8_t hook[88];
+    bool patches_saved;
     uint8_t body[2236];
     uint8_t staging[64];
     uint8_t ep0_hook[2][8];

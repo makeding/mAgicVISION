@@ -22,7 +22,7 @@ static struct sink empty_sink(void)
 }
 int main(void)
 {
-    struct mb86H_loader loader = {0};
+    struct mb86H_loader loader = {.preserve_all_ram = true};
     struct sink sink = empty_sink();
     loader.resident_saved = malloc(MB86H_RESIDENT_BYTES);
     loader.torne_boot0_saved = malloc(MB86H_TORNE_BOOT0_CODE_BYTES);
@@ -61,6 +61,18 @@ int main(void)
     assert(sink.bytes == 665460u && sink.calls == 9u);
     /* MBBOOT03 / MBSCREC4 payload, including all 393216 bytes of TS ring. */
     assert(sink.hash == UINT64_C(0x5b867cfa002b125d));
+    loader.preserve_all_ram = false;
+    assert(!mb86H_loader_snapshot_size(&loader));
+    loader.patches_saved = true;
+    sink = empty_sink();
+    assert(mb86H_loader_snapshot_size(&loader) == 2140u);
+    assert(!mb86H_loader_snapshot_write(&loader, write_part, &sink));
+    assert(sink.bytes == 2140u);
+    loader.is_torne = false;
+    sink = empty_sink();
+    assert(mb86H_loader_snapshot_size(&loader) == 2412u);
+    assert(!mb86H_loader_snapshot_write(&loader, write_part, &sink));
+    assert(sink.bytes == 2412u);
     free(loader.torne_ts_ring_saved);
     free(loader.torne_boot0_saved);
     free(loader.resident_saved);

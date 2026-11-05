@@ -2,7 +2,7 @@
 
 <p align="center"><img src="assets/banner.png" width="960" alt="Magic Vision — mAgic VISION"></p>
 
-mAgicVISION is a driver for mb86-series TV tuners.  
+mAgicVISION is a standard dvb driver for mb86-series TV tuners.  
 **The Windows WinUSB driver / BonDriver is still incomplete — PRs are very welcome.**
 
 [![ひろめ隊](https://img.youtube.com/vi/FGhd4D_h9xc/hqdefault.jpg)](https://www.youtube.com/watch?v=FGhd4D_h9xc)
@@ -125,6 +125,7 @@ Each channel was measured once for 5 seconds within the same USB session (standa
 
 The libusb verification tool is `build/usbctl`, and the boot/firmware verification tool is `build/usbboot`.  
 Do not open the same physical USB device simultaneously from the Linux kernel driver and userland.
+`usbboot start` initializes and restores changed regions. `download` and `ota` preserve and restore all RAM.
 
 ```sh
 ./build/usbctl devices

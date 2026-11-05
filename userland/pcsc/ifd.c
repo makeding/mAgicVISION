@@ -86,14 +86,14 @@ static int snapshot(void *unused,const struct mb86H_loader *l)
         if(k>0&&(size_t)k<sizeof path&&!lstat(path,&st)&&S_ISREG(st.st_mode))retained+=(size_t)st.st_size;
     }
     closedir(directory);
-    size_t payload=mb86H_loader_snapshot_size(l),bytes=payload+8;
+    size_t payload=mb86H_loader_snapshot_size(l),bytes=payload+(l->preserve_all_ram?8:0);
     if(!payload)return -EINVAL;
     if(bytes>8u*1024u*1024u || retained>8u*1024u*1024u-bytes)return -ENOSPC;
     int n=snprintf(reader.snapshot,sizeof reader.snapshot,"%s/recovery-%lu-%ld-%u.bin",dir,(unsigned long)geteuid(),(long)getpid(),now(0));
     if(n<0||(size_t)n>=sizeof reader.snapshot)return -EINVAL;
     int fd=open(reader.snapshot,O_WRONLY|O_CREAT|O_EXCL,0600);if(fd<0)return -errno;
     /* Keep each existing recovery format paired with its device profile. */
-    int rc=write_all(fd,l->target==MB86H_BOOTSTRAP_DT295?"MBBOOT04":l->is_torne?"MBSCREC4":"MBSCREC2",8);
+    int rc=l->preserve_all_ram?write_all(fd,l->target==MB86H_BOOTSTRAP_DT295?"MBBOOT04":l->is_torne?"MBSCREC4":"MBSCREC2",8):0;
     if(!rc)rc=mb86H_loader_snapshot_write(l,snapshot_write,&fd);
     if(!rc&&fsync(fd))rc=-errno;
     if(close(fd)&&!rc)rc=-errno;

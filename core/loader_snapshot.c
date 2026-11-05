@@ -12,27 +12,35 @@ static int parts(const struct mb86H_loader *loader, struct snapshot_part out[9],
                   unsigned *count, size_t *size)
 {
     unsigned n = 0, i;
+    static const char patch_magic[3][9] = {"XZPATCH1", "TNPTCH01", "DTPTCH01"};
     const struct mb86H_native_boot_profile *profile;
-    if (!loader || !loader->resident_saved || loader->adopted) return -EINVAL;
+    if (!loader || loader->adopted ||
+        (!loader->preserve_all_ram && !loader->patches_saved) ||
+        (loader->preserve_all_ram && !loader->resident_saved)) return -EINVAL;
     profile = mb86H_loader_native_profile(loader);
-    if (profile && (!loader->torne_boot0_saved ||
+    if (profile && loader->preserve_all_ram && (!loader->torne_boot0_saved ||
         (profile->ring_bytes && (!loader->torne_ts_ring_snapshot || !loader->torne_ts_ring_saved)))) return -EINVAL;
 #define ADD(p,nbytes) do { out[n++] = (struct snapshot_part){p, nbytes}; } while (0)
+    if (!loader->preserve_all_ram) {
+        unsigned target = loader->target == MB86H_BOOTSTRAP_DT295 ? 2u : loader->is_torne ? 1u : 0u;
+        ADD(patch_magic[target], 8);
+    }
     if (profile) {
         ADD(loader->torne_hook, sizeof(loader->torne_hook));
         ADD(loader->torne_body, sizeof(loader->torne_body));
         if (profile->out_patch) ADD(loader->torne_out_original, sizeof(loader->torne_out_original));
         ADD(loader->torne_state, profile->state_bytes);
         ADD(loader->torne_execution, sizeof(loader->torne_execution));
-        ADD(loader->torne_boot0_saved, profile->code_bytes);
+        if (loader->preserve_all_ram) ADD(loader->torne_boot0_saved, profile->code_bytes);
     } else {
         ADD(loader->hook, sizeof(loader->hook));
         ADD(loader->body, sizeof(loader->body));
         ADD(loader->ep0_hook, sizeof(loader->ep0_hook));
     }
     ADD(loader->staging, sizeof(loader->staging));
-    ADD(loader->resident_saved, MB86H_RESIDENT_BYTES);
-    if (profile && profile->ring_bytes) ADD(loader->torne_ts_ring_saved, profile->ring_bytes);
+    if (loader->preserve_all_ram) ADD(loader->resident_saved, MB86H_RESIDENT_BYTES);
+    if (profile && profile->ring_bytes && loader->preserve_all_ram)
+        ADD(loader->torne_ts_ring_saved, profile->ring_bytes);
 #undef ADD
     *size = 0;
     for (i = 0; i < n; ++i) *size += out[i].size;

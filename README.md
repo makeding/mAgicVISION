@@ -125,6 +125,7 @@ recisdb tune --device /dev/dvb/xz0/frontend0 --channel T24 --time 10  sample.ts
 
 libusb の確認用ツールは `build/usbctl`、起動・ファームウェア検証ツールは `build/usbboot` です。  
 Linux のカーネルドライバーとユーザーランドから同じ物理 USB 機器を同時に開かないでください。
+`usbboot start` は初期化後に変更した領域を復元します。`download` と `ota` は RAM 全体の退避・復元を行います。
 
 ```sh
 ./build/usbctl devices

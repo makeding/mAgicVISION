@@ -33,7 +33,7 @@ struct mb86H_session {
     uint32_t sequence;
     bool request_valid;
     uint32_t tune_timeout_ms; /* Device acquisition deadline; zero uses the default. */
-    uint32_t tune_poll_ms; /* Foreground cadence; zero preserves the 10 ms default. */
+    uint32_t tune_poll_ms; /* Foreground cadence; zero selects the 1 ms tune default. */
     bool streaming;
     bool stop_pending;
 };

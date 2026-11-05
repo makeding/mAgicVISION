@@ -141,7 +141,14 @@ struct firmware_context {
     struct log_context *log;
     const char *directory;
     unsigned exchanges;
+    struct {
+        uint64_t ns;
+        unsigned controls, exchanges;
+    } stages[MB86H_LOADER_STAGE_COUNT];
     int restoring;
+    bool acquisition_trace, tracing_tune;
+    struct mb86H_session *session;
+    const struct mb86H_session_ops *session_ops;
 };
 static uint32_t monotonic_ms(void *opaque)
 {
@@ -182,7 +189,8 @@ static int exchange(void *opaque, const uint8_t tx[64], uint8_t rx[64])
     if (!transport) return -EOPNOTSUPP;
     rc = transport->ops->exchange(transport->opaque, tx, rx);
     ++ctx->exchanges;
-    bool failed = rc || mb86H_debug_u32be_get(rx + 8) == MB86H_DEBUG_FATAL;
+    bool failed = rc || mb86H_debug_u32be_get(rx + 8) == MB86H_DEBUG_FATAL ||
+        !mb86H_debug_response_matches(rx, MB86H_DEBUG_MAGIC, mb86H_debug_u32be_get(tx + 4));
     if (failed || ctx->exchanges <= 4u || !(ctx->exchanges % 256u)) {
         account(ctx->log, fprintf(ctx->log->file,
             "{\"time\":%.6f,\"event\":\"loader-progress\",\"restoring\":%s,"
@@ -202,6 +210,31 @@ static int exchange(void *opaque, const uint8_t tx[64], uint8_t rx[64])
     }
     return rc;
 }
+/* Optional DT295 cached observations use the same serialized session owner. */
+static uint64_t monotonic_ns(void);
+static void acquisition_observe(void *opaque, const uint8_t request[64],
+                                const uint8_t *response, int result)
+{
+    struct firmware_context *ctx = opaque;
+    uint8_t sample[64] = {0};
+    if (!ctx->acquisition_trace || !ctx->tracing_tune || ctx->restoring ||
+        result || !response || ctx->log->failed ||
+        mb86H_debug_u32be_get(request + 8) != MB86H_DEBUG_RESIDENT_DISPATCH ||
+        mb86H_debug_u32be_get(request + 12) != MB86H_RESIDENT_COMMAND_SERVICE ||
+        mb86H_debug_u32be_get(response + 8) != MB86H_DEBUG_OK)
+        return;
+    int rc = mb86H_session_command(ctx->session, ctx->session_ops, ctx,
+                                  MB86H_RESIDENT_COMMAND_STATUS, 1, NULL, sample);
+    if (!rc && (mb86H_debug_u32be_get(sample + 8) != MB86H_DEBUG_OK ||
+                sample[24] != 1 || sample[25] != 1)) rc = -EPROTO;
+    account(ctx->log, fprintf(ctx->log->file,
+        "{\"event\":\"acquisition\",\"ns\":%" PRIu64 ",\"result\":%d,\"response\":\"",
+        monotonic_ns(), rc));
+    for (unsigned i = 0; i < sizeof(sample); ++i)
+        account(ctx->log, fprintf(ctx->log->file, "%02x", sample[i]));
+    account(ctx->log, fprintf(ctx->log->file, "\"}\n"));
+    if (rc) ctx->log->failed = 1;
+}
 static int snapshot_write(void *opaque, const void *data, size_t size)
 {
     return fwrite(data, 1, size, opaque) == size ? 0 : -EIO;
@@ -212,8 +245,8 @@ static int snapshot(void *opaque, const struct mb86H_loader *loader)
     FILE *f = new_file(ctx->directory, "preimage.bin");
     int rc = 0;
     if (!f) return -errno;
-    if (loader->target == MB86H_BOOTSTRAP_DT295) rc = snapshot_write(f, "MBBOOT04", 8);
-    else if (loader->is_torne) rc = snapshot_write(f, "MBBOOT03", 8);
+    if (loader->preserve_all_ram && loader->target == MB86H_BOOTSTRAP_DT295) rc = snapshot_write(f, "MBBOOT04", 8);
+    else if (loader->preserve_all_ram && loader->is_torne) rc = snapshot_write(f, "MBBOOT03", 8);
     if (!rc) rc = mb86H_loader_snapshot_write(loader, snapshot_write, f);
     if (fflush(f) || fsync(fileno(f))) rc = -EIO;
     if (fclose(f)) rc = -EIO;
@@ -231,6 +264,29 @@ static uint64_t monotonic_ns(void)
     struct timespec now;
     if (clock_gettime(CLOCK_MONOTONIC, &now)) return 0;
     return (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
+}
+static void loader_observe(void *opaque, const struct mb86H_loader_observation *event)
+{
+    static const char *const names[MB86H_LOADER_STAGE_COUNT] = {
+        "adopt-validate", "hook-snapshot", "resident-snapshot", "write", "readback",
+        "commit", "capabilities", "prepare", "initialize", "restore",
+    };
+    struct firmware_context *ctx = opaque;
+    unsigned stage = (unsigned)event->stage;
+    uint64_t ns = monotonic_ns();
+    if (stage >= MB86H_LOADER_STAGE_COUNT) return;
+    if (event->began) {
+        ctx->stages[stage].ns = ns;
+        ctx->stages[stage].controls = ctx->log->controls;
+        ctx->stages[stage].exchanges = ctx->exchanges;
+    }
+    account(ctx->log, fprintf(ctx->log->file,
+        "{\"event\":\"loader-stage\",\"stage\":\"%s\",\"edge\":\"%s\","
+        "\"ns\":%" PRIu64 ",\"duration_ms\":%.3f,\"controls\":%u,\"exchanges\":%u,\"status\":%d}\n",
+        names[stage], event->began ? "begin" : "end", ns,
+        (double)(ns - ctx->stages[stage].ns) / 1000000.0,
+        ctx->log->controls - ctx->stages[stage].controls,
+        ctx->exchanges - ctx->stages[stage].exchanges, event->status));
 }
 struct capture_pat {
     uint8_t section[1024];
@@ -379,7 +435,9 @@ static int capture_firmware(struct firmware_context *ctx,
     if (!rc) {
         tune_begin_ns = monotonic_ns();
         atomic_store_explicit(&writer.tune_ns, tune_begin_ns, memory_order_relaxed);
+        ctx->tracing_tune = true;
         rc = mb86H_session_tune(session, ops, ctx, source, &options->request, true);
+        ctx->tracing_tune = false;
     }
     uint64_t tune_return_ns = monotonic_ns();
     account(ctx->log, fprintf(ctx->log->file,
@@ -455,28 +513,40 @@ static int capture_firmware(struct firmware_context *ctx,
 static int download_firmware(struct usb_device *device, struct mb86H_loader *loader,
                               struct log_context *log, const char *directory,
                               const struct mb86H_loader *alternative,
-                              const struct capture_options *capture_options, unsigned capture_count)
+                              bool initialize, const struct capture_options *capture_options, unsigned capture_count)
 {
     const struct mb86H_loader original = *loader;
     struct firmware_context ctx = {.device = device, .log = log, .directory = directory};
     struct mb86H_session session = {0};
     const struct mb86H_session_ops session_ops = {
-        .exchange = exchange, .now_ms = monotonic_ms, .delay_ms = delay_ms,
+        .exchange = exchange, .observe = acquisition_observe,
+        .now_ms = monotonic_ms, .delay_ms = delay_ms,
     };
     const struct mb86H_loader_ops ops = {
         .window_read = read_window, .window_write = write_window, .session = &session,
         .session_ops = &session_ops, .now_ms = monotonic_ms, .delay_ms = delay_ms,
         .allocate = allocate, .release = release, .snapshot = snapshot, .block_writes = block_writes,
+        .observe = loader_observe,
+        .preserve_all_ram = !initialize,
     };
     struct mb86H_device_overview overview = {0};
+    ctx.session = &session; ctx.session_ops = &session_ops;
+    const char *trace = getenv("MB86H_DT295_ACQUISITION_TRACE");
+    ctx.acquisition_trace = loader->target == MB86H_BOOTSTRAP_DT295 && trace && !strcmp(trace, "1");
+    account(log, fprintf(log->file, "{\"event\":\"acquisition-trace\",\"enabled\":%s}\n",
+                         ctx.acquisition_trace ? "true" : "false"));
     int rc = 0;
     for (unsigned round=0;round<(alternative?3u:1u);++round) {
         const struct mb86H_loader *selected=round==1?alternative:&original;
         uint8_t reply[64]={0};
         rc=round?mb86H_loader_update(loader,&ops,&ctx,selected):
-            capture_options?mb86H_loader_start(loader,&ops,&ctx):
+            initialize?mb86H_loader_start(loader,&ops,&ctx):
             mb86H_loader_install(loader,&ops,&ctx);
-        if (!rc) rc=mb86H_session_prepare(&session,&session_ops,&ctx,&overview);
+        if (!rc) {
+            loader_observe(&ctx, &(struct mb86H_loader_observation){MB86H_LOADER_PREPARE, 1, 0});
+            rc=mb86H_session_prepare(&session,&session_ops,&ctx,&overview);
+            loader_observe(&ctx, &(struct mb86H_loader_observation){MB86H_LOADER_PREPARE, 0, rc});
+        }
         if (alternative) {
             if (!rc) rc=mb86H_session_command(&session,&session_ops,&ctx,
                 MB86H_RESIDENT_COMMAND_CAPABILITIES,0,NULL,reply);
@@ -512,14 +582,14 @@ static int download_firmware(struct usb_device *device, struct mb86H_loader *loa
                               capture_options + segment);
     }
     ctx.restoring = 1;
-    int restored = capture_options ? mb86H_loader_close(loader, &ops, &ctx) :
+    int restored = initialize ? mb86H_loader_close(loader, &ops, &ctx) :
                                     mb86H_loader_restore(loader, &ops, &ctx);
     account(log, fprintf(log->file,
         "{\"time\":%.6f,\"event\":\"%s\",\"result\":%d,\"exchanges\":%u,\"controls\":%u}\n",
-        timestamp(), capture_options ? "firmware-close" : "restore", restored, ctx.exchanges, log->controls));
+        timestamp(), initialize ? "firmware-close" : "restore", restored, ctx.exchanges, log->controls));
     printf("firmware_result=%d identity=%s resident_abi=%u %s_result=%d\n",
            firmware_rc, firmware_rc ? "unverified" : MB86H_FIRMWARE_IDENTITY, overview.resident_abi,
-           capture_options ? "firmware_close" : "restore", restored);
+           initialize ? "firmware_close" : "restore", restored);
     return rc ? rc : restored;
 }
 
@@ -532,8 +602,8 @@ int main(int argc, char **argv)
     struct usb_libusb_identity identity;
     struct log_context log = {.file = stderr};
     const struct mb86H_device_info *info;
-    int rc = 0, close_rc = 0, capture, prepare, download, check_image, ota, record, sequence;
-    struct capture_options recording[3] = {{0}};
+    int rc = 0, close_rc = 0, capture, prepare, download, check_image, ota, record, sequence, start;
+    struct capture_options recording[4] = {{0}};
     unsigned capture_count = 0;
     const char *directory = NULL;
     FILE *raw[2] = {NULL, NULL};
@@ -542,17 +612,18 @@ int main(int argc, char **argv)
     size_t image_size = 0, image_b_size = 0;
     size_t written[2] = {0}, different = 0, first_difference = SIZE_MAX;
     uint64_t hashes[2] = {UINT64_C(14695981039346656037), UINT64_C(14695981039346656037)};
-    if ((argc != 4 && argc != 5 && argc != 6 && argc != 7 && argc != 10 && argc != 18) || parse_id(argv[2], &vendor) ||
+    if ((argc != 4 && argc != 5 && argc != 6 && argc != 7 && argc != 10 && argc != 18 && argc != 22) || parse_id(argv[2], &vendor) ||
         parse_id(argv[3], &product)) goto usage;
     capture = !strcmp(argv[1], "read-boot0");
     prepare = !strcmp(argv[1], "prepare");
     ota = !strcmp(argv[1], "ota");
     sequence = !strcmp(argv[1], "capture-sequence");
     record = sequence || !strcmp(argv[1], "capture");
-    capture_count = record ? (sequence ? 3 : 1) : 0;
-    download = record || ota || !strcmp(argv[1], "download");
+    start = !strcmp(argv[1], "start");
+    capture_count = record ? (sequence ? (unsigned)(argc-6)/4u : 1u) : 0u;
+    download = start || record || ota || !strcmp(argv[1], "download");
     check_image = !strcmp(argv[1], "check-image");
-    if ((download && argc != (record ? (sequence ? 18 : 10) : ota ? 7 : 6)) || ((capture || check_image) && argc != 5) ||
+    if ((download && (record ? (sequence ? (argc != 18 && argc != 22) : argc != 10) : argc != (ota ? 7 : 6))) || ((capture || check_image) && argc != 5) ||
         (!(capture || download || check_image) && argc != 4) ||
         (!capture && !prepare && !download && !check_image && strcmp(argv[1], "identify") &&
          strcmp(argv[1], "plan") && strcmp(argv[1], "observe"))) goto usage;
@@ -569,7 +640,7 @@ int main(int argc, char **argv)
         if (values[0] >= MB86H_CHANNEL_COUNT || !values[1] ||
             !values[3] || values[3] > INT32_MAX ||
             (values[2] != UINT32_MAX && values[2] > 65535)) goto usage;
-        static const char *names[] = {"capture-01.ts", "capture-02.ts", "capture-03.ts"};
+        static const char *names[] = {"capture-01.ts", "capture-02.ts", "capture-03.ts", "capture-04.ts"};
         recording[segment].filename = sequence ? names[segment] : "capture.ts";
         recording[segment].max_bytes = 512U * 1024U * 1024U / capture_count;
         recording[segment].source = (unsigned)values[0];
@@ -669,7 +740,7 @@ int main(int argc, char **argv)
     rc = usb_libusb_observe_control(device, observe, &log);
     if (rc) goto done;
     if (download) {
-        rc = download_firmware(device, &loader, &log, directory, ota?&alternative:NULL, record?recording:NULL, capture_count);
+        rc = download_firmware(device, &loader, &log, directory, ota?&alternative:NULL, start || record, record?recording:NULL, capture_count);
         goto done;
     } else rc = prepare ? usb_libusb_prepare_boot0(device, &result) :
                    usb_libusb_observe_boot0(device, &result);
@@ -751,9 +822,10 @@ usage:
                     "       usbboot read-boot0 VID PID NEW_EVIDENCE_DIRECTORY\n"
                     "       usbboot check-image VID PID FIRMWARE_BUNDLE\n"
                     "       usbboot download VID PID FIRMWARE_BUNDLE NEW_EVIDENCE_DIRECTORY\n"
+                    "       usbboot start VID PID FIRMWARE_BUNDLE NEW_EVIDENCE_DIRECTORY\n"
                     "       usbboot ota VID PID FIRMWARE_A FIRMWARE_B NEW_EVIDENCE_DIRECTORY\n"
                     "       usbboot capture VID PID BUNDLE SOURCE FREQUENCY TSID|auto DURATION_MS NEW_DIRECTORY\n"
-                    "       usbboot capture-sequence VID PID BUNDLE NEWDIR S F TSID MS S F TSID MS S F TSID MS\n"
-                    "download installs, verifies and restores; ota keeps one owner for A/B/A and one final restore.\n");
+                    "       usbboot capture-sequence VID PID BUNDLE NEWDIR S F TSID MS S F TSID MS S F TSID MS [S F TSID MS]\n"
+                    "start initializes and restores patches; download/ota preserve and restore all RAM.\n");
     return 2;
 }

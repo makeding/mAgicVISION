@@ -32,7 +32,8 @@ static int transport_exchange(void *opaque,
         return rc;
     }
     pthread_mutex_lock(&device->control_mutex);
-    int rc = native_result(usb_xz_exchange(&native_ops, device, request, response));
+    int rc = native_result(usb_xz_exchange_cached(&native_ops, device,
+        &device->xz_read_cache, request, response));
     pthread_mutex_unlock(&device->control_mutex);
     return rc;
 }

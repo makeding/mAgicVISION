@@ -163,7 +163,7 @@ int main(void)
     mb86H_session_reset(&s);
     f.ready_after = 25;
     assert(!mb86H_session_tune(&s, &ops, &f, 0, &gr, false));
-    assert(f.now == 30); /* default devices retain their established cadence */
+    assert(f.now == 25); /* all transports share the fine tune cadence */
     memset(&f, 0, sizeof(f));
     mb86H_session_reset(&s);
     assert(!mb86H_session_prepare(&s, &ops, &f, &overview));

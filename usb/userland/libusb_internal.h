@@ -67,6 +67,7 @@ struct usb_device {
     const struct mb86H_device_info *info;
     struct usb_libusb_identity identity;
     struct usb_libusb_receive_status receive_status;
+    struct usb_xz_read_cache xz_read_cache;
     usb_control_observer observer;
     void *observer_opaque;
     usb_native_observer native_observer;

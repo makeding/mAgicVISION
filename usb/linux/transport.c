@@ -66,6 +66,7 @@ struct usb_host {
     const struct mb86H_device_info *device;
     struct mb86H_dvb_caps caps[MB86H_CHANNEL_COUNT];
     bool torne_block_writes;
+    struct usb_xz_read_cache xz_read_cache;
 	struct usb_device *udev;
 	struct usb_interface *intf;
 	struct mb86H_dvb *dvb;
@@ -190,6 +191,7 @@ static int usb_window_locked(struct usb_host *x, u8 direction, u32 address,
 {
 	int actual;
 	u8 *buffer;
+	x->xz_read_cache.valid = false;
 
 	if (!length || !data || address > 0xfffffu ||
 	    address + length > 0x100000u)
@@ -238,6 +240,7 @@ static int usb_native_control(void *opaque, const struct usb_window_control *con
                                void *data, unsigned timeout)
 {
     struct usb_host *x = opaque;
+    x->xz_read_cache.valid = false;
     bool reading = control->request_type & USB_DIR_IN;
     u8 *buffer = kmalloc(control->length, GFP_KERNEL);
     int actual;
@@ -255,6 +258,20 @@ static int usb_native_control(void *opaque, const struct usb_window_control *con
     return 0;
 }
 static const struct usb_native_ops usb_native_ops = {.control = usb_native_control};
+
+/* Preserve XZ's established per-control deadlines and error reporting. */
+static int usb_xz_control(void *opaque, const struct usb_window_control *control,
+                          void *data, unsigned timeout)
+{
+    struct usb_host *x = opaque;
+    u32 address = ((u32)(control->value & 0x0f00u) << 8) | control->index;
+    bool reading = control->request_type & USB_DIR_IN;
+    (void)timeout;
+    return usb_window_locked(x, control->request_type, address, data,
+        control->length, reading && address == MB86H_BOOT0_STAGING_ADDRESS ?
+        20000 : USB_WINDOW_TIMEOUT_MS);
+}
+static const struct usb_native_ops usb_xz_ops = {.control = usb_xz_control};
 
 static const struct usb_native_window_profile *usb_native_window_profile(
     const struct usb_host *x)
@@ -280,7 +297,6 @@ static int usb_session_exchange(void *opaque, const uint8_t request[64],
 					uint8_t response[64])
 {
 	struct usb_host *x = opaque;
-	unsigned int offset;
 	const struct usb_native_window_profile *profile;
 	u64 service_begin = 0;
 	int rc;
@@ -295,14 +311,8 @@ static int usb_session_exchange(void *opaque, const uint8_t request[64],
 		rc = usb_native_exchange(&usb_native_ops, x, profile, request, response,
 					   x->torne_block_writes);
 	} else {
-		for (offset = 60;; offset -= 4) {
-			rc = usb_window_write_locked(x, MB86H_BOOT0_STAGING_ADDRESS + offset,
-						 request + offset, 4);
-			if (rc || !offset)
-				break;
-		}
-		if (!rc) rc = usb_window_read_locked(x, MB86H_BOOT0_STAGING_ADDRESS,
-							 response, 64);
+		rc = usb_xz_exchange_cached(&usb_xz_ops, x, &x->xz_read_cache,
+					    request, response);
 	}
 	if (service_begin) {
 		struct usb_rx_stats *s = &x->rx_stats;
@@ -898,7 +908,6 @@ static int usb_probe(struct usb_interface *intf, const struct usb_device_id *id)
     x->caps[0].present = !!(x->device->delivery_systems & (1u << MB86H_DVB_GR));
     x->caps[1].present = !!(x->device->delivery_systems & (1u << MB86H_DVB_BSCS));
     x->session.tune_timeout_ms = x->device->vendor == USB_TORNE_VENDOR_ID ? 70000u : MB86H_INIT_TIMEOUT_MS;
-    x->session.tune_poll_ms = x->device->vendor == USB_TORNE_VENDOR_ID ? 1u : 0u;
     if (x->device->vendor == USB_TORNE_VENDOR_ID) {
         x->caps[0].frequency_min = 170000000;
         x->caps[0].frequency_max = 860000000;
@@ -1071,7 +1080,6 @@ static int usb_resume(struct usb_interface *intf)
      * boot0 vs exact retained resident; never restore old RAM after a reset. */
     mb86H_session_reset(&x->session);
     x->session.tune_timeout_ms = x->device->vendor == USB_TORNE_VENDOR_ID ? 70000u : MB86H_INIT_TIMEOUT_MS;
-    x->session.tune_poll_ms = x->device->vendor == USB_TORNE_VENDOR_ID ? 1u : 0u;
     x->torne_block_writes = false;
     rc = mb86H_device_firmware_parse(x->device, &x->loader, firmware_embedded_data,
         (size_t)(firmware_embedded_end - firmware_embedded_data));

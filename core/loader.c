@@ -218,8 +218,12 @@ static struct mb86H_resident_image_ops resident_image_ops(
         .session = ops->session,
         .session_ops = ops->session_ops,
         .mismatch = ops->mismatch,
+        .observe = ops->observe,
     };
 }
+static void observe(const struct mb86H_loader_ops *ops,void *opaque,
+                    enum mb86H_loader_stage stage,int began,int status)
+{ if(ops->observe) ops->observe(opaque,&(struct mb86H_loader_observation){stage,began,status}); }
 
 static int install_hook(struct mb86H_loader *loader,
                         const struct mb86H_loader_ops *ops, void *opaque)
@@ -246,6 +250,7 @@ static int install_hook(struct mb86H_loader *loader,
     }
     rc = window_read(ops, opaque, MB86H_BOOT0_STAGING_ADDRESS, loader->staging, 64);
     if (rc) return rc;
+    loader->patches_saved = true;
     for (offset = 0; offset < sizeof(loader->body); offset += 4) {
         loader->body_attempted = true;
         rc = write_boot0_region(loader, ops, opaque, MB86H_BOOT0_BODY_ADDRESS + offset, 4);
@@ -287,15 +292,20 @@ static int native_install_hook(struct mb86H_loader *loader,
     if (loader->torne_state[0] || loader->torne_state[1] ||
         loader->torne_state[2] || loader->torne_state[3])
         return -EBUSY;
-    loader->torne_boot0_saved = ops->allocate(opaque, profile->code_bytes);
-    if (!loader->torne_boot0_saved) return -ENOMEM;
-    rc = read_boot0_region(loader, ops, opaque, profile->code,
-                          loader->torne_boot0_saved, profile->code_bytes, 64);
-    if (rc) return rc;
-    memcpy(loader->torne_hook,
-           loader->torne_boot0_saved + profile->hook -
-               profile->code,
-           sizeof(loader->torne_hook));
+    if (loader->preserve_all_ram) {
+        loader->torne_boot0_saved = ops->allocate(opaque, profile->code_bytes);
+        if (!loader->torne_boot0_saved) return -ENOMEM;
+        rc = read_boot0_region(loader, ops, opaque, profile->code,
+                              loader->torne_boot0_saved, profile->code_bytes, 64);
+        if (rc) return rc;
+        memcpy(loader->torne_hook,
+               loader->torne_boot0_saved + profile->hook - profile->code,
+               sizeof(loader->torne_hook));
+    } else {
+        rc = read_boot0_region(loader, ops, opaque, profile->hook,
+                              loader->torne_hook, sizeof(loader->torne_hook), 4);
+        if (rc) return rc;
+    }
     rc = read_region(ops, opaque, profile->body,
                      loader->torne_body, 0,
                      sizeof(loader->torne_body), 64);
@@ -312,7 +322,7 @@ static int native_install_hook(struct mb86H_loader *loader,
     rc = read_region(ops, opaque, 0x000fd0090u, loader->torne_execution,
                      0, sizeof(loader->torne_execution), 4);
     if (rc) return rc;
-    if (profile->ring_bytes) {
+    if (profile->ring_bytes && loader->preserve_all_ram) {
     loader->torne_ts_ring_saved = ops->allocate(opaque, profile->ring_bytes);
     if (!loader->torne_ts_ring_saved) return -ENOMEM;
     rc = read_region(ops, opaque, profile->ring,
@@ -321,13 +331,14 @@ static int native_install_hook(struct mb86H_loader *loader,
     if (rc) return rc;
     loader->torne_ts_ring_snapshot = true;
     }
-    for (offset = 0; offset < MB86H_RESIDENT_BYTES; offset += 16384) {
+    for (offset = 0; loader->preserve_all_ram && offset < MB86H_RESIDENT_BYTES; offset += 16384) {
         uint32_t length = MB86H_RESIDENT_BYTES - offset;
         if (length > 16384) length = 16384;
         rc = window_read(ops, opaque, MB86H_RESIDENT_BASE + offset,
                          loader->resident_saved + offset, length);
         if (rc) return rc;
     }
+    loader->patches_saved = true;
     if (ops->snapshot) { rc = ops->snapshot(opaque, loader); if (rc) return rc; }
 
     if (profile->out_patch) {
@@ -528,9 +539,12 @@ int mb86H_loader_install(struct mb86H_loader *loader,
         !ops->allocate || !ops->release || !ops->session || !ops->session_ops ||
         !ops->session_ops->exchange || !ops->session_ops->now_ms ||
         !ops->session_ops->delay_ms || !ops->now_ms || !ops->delay_ms) return -EINVAL;
+    loader->preserve_all_ram = ops->preserve_all_ram;
     if (!loader->adopted && !loader->resident_saved && !loader->hook_attempted &&
         !loader->body_attempted && !loader->torne_out_attempted) {
+        observe(ops,opaque,MB86H_LOADER_ADOPT_VALIDATE,1,0);
         rc = mb86H_loader_adopt(loader, ops, opaque);
+        observe(ops,opaque,MB86H_LOADER_ADOPT_VALIDATE,0,rc);
         if (rc) return rc < 0 ? rc : 0;
     }
     if (loader->adopted) return loader->recovery_error;
@@ -539,36 +553,49 @@ int mb86H_loader_install(struct mb86H_loader *loader,
         if (rc) return rc;
     }
     if (!mb86H_loader_native_profile(loader)) {
+        observe(ops,opaque,MB86H_LOADER_HOOK_SNAPSHOT,1,0);
         rc = install_hook(loader, ops, opaque);
+        observe(ops,opaque,MB86H_LOADER_HOOK_SNAPSHOT,0,rc);
         if (rc) return rc;
     }
     image_ops = resident_image_ops(ops);
-    loader->resident_saved = ops->allocate(opaque, MB86H_RESIDENT_BYTES);
-    if (!loader->resident_saved) return -ENOMEM;
-    for (offset = 0; !mb86H_loader_native_profile(loader) && offset < MB86H_RESIDENT_BYTES;
+    if (loader->preserve_all_ram) {
+        observe(ops,opaque,MB86H_LOADER_RESIDENT_SNAPSHOT,1,0);
+        loader->resident_saved = ops->allocate(opaque, MB86H_RESIDENT_BYTES);
+        if (!loader->resident_saved) { observe(ops,opaque,MB86H_LOADER_RESIDENT_SNAPSHOT,0,-ENOMEM); return -ENOMEM; }
+    }
+    for (offset = 0; loader->preserve_all_ram && !mb86H_loader_native_profile(loader) && offset < MB86H_RESIDENT_BYTES;
          offset += MB86H_RESIDENT_BLOCK_BYTES) {
         uint32_t length = MB86H_RESIDENT_BYTES - offset;
         if (length > MB86H_RESIDENT_BLOCK_BYTES) length = MB86H_RESIDENT_BLOCK_BYTES;
         rc = mb86H_resident_image_block(&image_ops, opaque, offset, false, 0,
                                         loader->resident_saved + offset, length);
-        if (rc) { ops->release(opaque, loader->resident_saved); loader->resident_saved = 0; return rc; }
+        if (rc) { ops->release(opaque, loader->resident_saved); loader->resident_saved = 0; observe(ops,opaque,MB86H_LOADER_RESIDENT_SNAPSHOT,0,rc); return rc; }
     }
     if (mb86H_loader_native_profile(loader)) {
+        observe(ops,opaque,MB86H_LOADER_HOOK_SNAPSHOT,1,0);
         rc = native_install_hook(loader, ops, opaque);
-        if (rc) return rc;
+        observe(ops,opaque,MB86H_LOADER_HOOK_SNAPSHOT,0,rc);
+        if (rc) { if (loader->preserve_all_ram) observe(ops,opaque,MB86H_LOADER_RESIDENT_SNAPSHOT,0,rc); return rc; }
         if (loader->target == MB86H_BOOTSTRAP_DT295) {
             rc = mb86H_session_exchange(ops->session, ops->session_ops, opaque,
                 MB86H_DEBUG_PING, 0, 0, 0, data, response);
-            if (rc || mb86H_be32_get(response+8) != MB86H_DEBUG_OK || mb86H_be32_get(response+12) != 1)
-                return rc ? rc : -EPROTO;
+            if (rc || mb86H_be32_get(response+8) != MB86H_DEBUG_OK || mb86H_be32_get(response+12) != 1) {
+                rc=rc ? rc : -EPROTO;
+                if (loader->preserve_all_ram) observe(ops,opaque,MB86H_LOADER_RESIDENT_SNAPSHOT,0,rc);
+                return rc;
+            }
         }
     } else {
-        if (ops->snapshot) { rc = ops->snapshot(opaque, loader); if (rc) return rc; }
+        if (ops->snapshot) { rc = ops->snapshot(opaque, loader); if (rc) { if (loader->preserve_all_ram) observe(ops,opaque,MB86H_LOADER_RESIDENT_SNAPSHOT,0,rc); return rc; } }
     }
+    if (loader->preserve_all_ram)
+        observe(ops,opaque,MB86H_LOADER_RESIDENT_SNAPSHOT,0,0);
     loader->resident_attempted = true;
     rc = mb86H_resident_image_program(&image_ops, opaque, loader->resident);
     if (rc) return rc;
     loader->resident_active = true;
+    observe(ops,opaque,MB86H_LOADER_CAPS,1,0);
     rc = dispatch(loader, ops, opaque, MB86H_RESIDENT_COMMAND_CAPABILITIES, 0, data, response);
     if (rc || mb86H_be32_get(response + MB86H_DEBUG_PACKET_OPERATION_OFFSET) != MB86H_DEBUG_OK ||
         mb86H_be32_get(response + 16) != MB86H_RESIDENT_ABI_VERSION ||
@@ -576,7 +603,8 @@ int mb86H_loader_install(struct mb86H_loader *loader,
                MB86H_FIRMWARE_IDENTITY, MB86H_FIRMWARE_IDENTITY_BYTES) ||
         response[MB86H_DEBUG_PACKET_DATA_OFFSET + 15] !=
             (mb86H_loader_native_profile(loader) ? mb86H_loader_native_profile(loader)->rf_mask : 3))
-        return rc ? rc : -EPROTO;
+        { rc=rc?rc:-EPROTO; observe(ops,opaque,MB86H_LOADER_CAPS,0,rc); return rc; }
+    observe(ops,opaque,MB86H_LOADER_CAPS,0,0);
     return 0;
 }
 
@@ -585,9 +613,13 @@ int mb86H_loader_start(struct mb86H_loader *loader,
 {
     int rc=mb86H_loader_install(loader,ops,opaque);
     if(rc)return rc;
+    observe(ops,opaque,MB86H_LOADER_PREPARE,1,0);
     rc=mb86H_session_prepare(ops->session,ops->session_ops,opaque,0);
+    observe(ops,opaque,MB86H_LOADER_PREPARE,0,rc);
     if(rc)return rc;
-    return mb86H_session_initialize(ops->session,ops->session_ops,opaque);
+    observe(ops,opaque,MB86H_LOADER_INITIALIZE,1,0);
+    rc=mb86H_session_initialize(ops->session,ops->session_ops,opaque);
+    observe(ops,opaque,MB86H_LOADER_INITIALIZE,0,rc); return rc;
 }
 
 static int same_boot_view(const struct mb86H_loader *left,
@@ -631,14 +663,14 @@ static int update_ready(const struct mb86H_loader *owner)
 {
     const struct mb86H_native_boot_profile *profile;
     if(!owner || owner->adopted || owner->recovery_error || !owner->resident_active ||
-       !owner->resident_saved || !owner->resident_attempted || !owner->hook_attempted ||
+       (owner->preserve_all_ram && !owner->resident_saved) || !owner->resident_attempted || !owner->hook_attempted ||
        !owner->body_attempted)
         return -EINVAL;
     profile=mb86H_loader_native_profile(owner);
     if(!profile)return owner->ep0_attempted==3u?0:-EINVAL;
-    if(!owner->torne_boot0_saved ||
+    if(owner->preserve_all_ram && (!owner->torne_boot0_saved ||
        (profile->ring_bytes && (!owner->torne_ts_ring_snapshot ||
-                                !owner->torne_ts_ring_saved)))
+                                !owner->torne_ts_ring_saved))))
         return -EINVAL;
     return 0;
 }
@@ -702,7 +734,7 @@ int mb86H_loader_update(struct mb86H_loader *owner,
     return 0;
 }
 
-int mb86H_loader_restore(struct mb86H_loader *loader,
+static int loader_restore_inner(struct mb86H_loader *loader,
                              const struct mb86H_loader_ops *ops, void *opaque)
 {
     static const uint32_t ep0[2] = {0xe9b54u, 0xe9c08u};
@@ -761,6 +793,12 @@ int mb86H_loader_restore(struct mb86H_loader *loader,
             rc = window_write(ops, opaque, MB86H_BOOT0_BODY_ADDRESS + offset, loader->body + offset, 4);
             if (rc) break;
         }
+    if (!rc && !loader->preserve_all_ram && loader->hook_attempted)
+        rc = verify_region(ops, opaque, MB86H_BOOT0_HOOK_ADDRESS,
+                           loader->hook, sizeof(loader->hook), 4);
+    if (!rc && !loader->preserve_all_ram && loader->body_attempted)
+        rc = verify_region(ops, opaque, MB86H_BOOT0_BODY_ADDRESS,
+                           loader->body, sizeof(loader->body), 4);
     if (!rc && loader->body_attempted)
         rc = window_write(ops, opaque, MB86H_BOOT0_STAGING_ADDRESS + 4, loader->staging + 4, 60);
     if (!rc && loader->body_attempted) {
@@ -776,6 +814,19 @@ int mb86H_loader_restore(struct mb86H_loader *loader,
         loader->hook_attempted = false;
         loader->body_attempted = false;
     }
+    return rc;
+}
+
+int mb86H_loader_restore(struct mb86H_loader *loader,
+                          const struct mb86H_loader_ops *ops, void *opaque)
+{
+    int rc;
+    if (!ops)
+        return -EINVAL;
+    observe(ops, opaque, MB86H_LOADER_RESTORE, 1, 0);
+    rc = loader_restore_inner(loader, ops, opaque);
+    if (!rc && loader) loader->patches_saved = false;
+    observe(ops, opaque, MB86H_LOADER_RESTORE, 0, rc);
     return rc;
 }
 
@@ -797,6 +848,7 @@ int mb86H_loader_close(struct mb86H_loader *loader,
     loader->torne_boot0_saved=0;
     loader->torne_ts_ring_saved=0;
     loader->torne_ts_ring_snapshot=false;
+    loader->patches_saved=false;
     loader->resident_attempted=false;
     loader->hook_attempted=false;
     loader->body_attempted=false;

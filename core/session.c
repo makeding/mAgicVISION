@@ -211,9 +211,8 @@ static int session_settle(struct mb86H_session *s,
             return -ETIMEDOUT;
         }
         /* Firmware gates every step on its hardware due time. Adapters may
-         * select a finer foreground cadence for zero/one-ms calibration
-         * transitions; other devices and initialization keep 10 ms. */
-        ops->delay_ms(opaque, generation && s->tune_poll_ms ? s->tune_poll_ms : 10u);
+         * override the 1 ms foreground cadence; initialization keeps 10 ms. */
+        ops->delay_ms(opaque, generation ? (s->tune_poll_ms ? s->tune_poll_ms : 1u) : 10u);
     }
 }
 

@@ -42,6 +42,7 @@ int control_locked(struct usb_device *device,
     size_t index;
     if (!device || !steps || !step_count)
         return USB_ARGUMENT;
+    device->xz_read_cache.valid = false;
     if (pthread_equal(pthread_self(), device->event_thread))
         return USB_CLOSED;
     for (index = 0; index < step_count; ++index) {

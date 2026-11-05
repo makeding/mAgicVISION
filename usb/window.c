@@ -2,6 +2,7 @@
 #include "mb86H/usb/window.h"
 
 #include "mb86H/protocol/constants.h"
+#include "mb86H/bytes.h"
 #ifdef __KERNEL__
 #include <linux/errno.h>
 #include <linux/string.h>
@@ -309,4 +310,59 @@ int usb_xz_exchange(const struct usb_native_ops *ops, void *opaque,
         };
         return ops->control(opaque, &control, response, 20000);
     }
+}
+
+int usb_xz_exchange_cached(const struct usb_native_ops *ops, void *opaque,
+    struct usb_xz_read_cache *cache, const uint8_t request[64], uint8_t response[64])
+{
+    uint8_t wire[64], previous[64];
+    uint32_t offset, length;
+    bool valid;
+    int rc;
+    if (!cache) return usb_xz_exchange(ops, opaque, request, response);
+    valid = cache->valid;
+    memcpy(previous, cache->packet, sizeof(previous));
+    cache->valid = false;
+    if (!ops || !ops->control || !request || !response) return -EINVAL;
+    offset = mb86H_be32_get(request + 12);
+    length = mb86H_be32_get(request + 20);
+    if (mb86H_be32_get(request) != MB86H_DEBUG_MAGIC ||
+        mb86H_be32_get(request + 8) != MB86H_DEBUG_RESIDENT_BLOCK ||
+        mb86H_be32_get(request + 16) || !length ||
+        length > MB86H_RESIDENT_BLOCK_BYTES || (offset & 3u) || (length & 3u) ||
+        offset > MB86H_RESIDENT_BYTES - length)
+        return usb_xz_exchange(ops, opaque, request, response);
+    memcpy(wire, request, sizeof(wire));
+    /* BLOCK read only writes data; it never consumes its input contents. */
+    if (valid) memcpy(wire + 24, previous + 24, 40);
+    for (unsigned i = 0; i < 16; ++i) {
+        uint32_t word = 60 - i * 4;
+        uint32_t address = MB86H_BOOT0_STAGING_ADDRESS + word;
+        const struct usb_window_control control = {
+            .request_type = 0x40, .request = USB_WINDOW_VENDOR_REQUEST,
+            .value = (uint16_t)(((address >> 16) & 15u) << 8),
+            .index = (uint16_t)address, .length = 4,
+        };
+        /* Native OUT receives its word through the staging base itself.
+         * Always republish magic last, even when the preceding reply matched. */
+        if (valid && word && !memcmp(wire + word, previous + word, 4)) continue;
+        rc = ops->control(opaque, &control, wire + word, 20000);
+        if (rc) return rc;
+    }
+    {
+        const struct usb_window_control control = {
+            .request_type = 0xc0, .request = USB_WINDOW_VENDOR_REQUEST,
+            .value = (uint16_t)(((MB86H_BOOT0_STAGING_ADDRESS >> 16) & 15u) << 8),
+            .index = (uint16_t)MB86H_BOOT0_STAGING_ADDRESS, .length = 64,
+        };
+        rc = ops->control(opaque, &control, response, 20000);
+    }
+    if (!rc && !memcmp(response, wire, 8) &&
+        mb86H_be32_get(response + 8) == MB86H_DEBUG_OK &&
+        mb86H_be32_get(response + 12) == length &&
+        mb86H_be32_get(response + 16) == offset && !mb86H_be32_get(response + 20)) {
+        memcpy(cache->packet, response, sizeof(cache->packet));
+        cache->valid = true;
+    }
+    return rc;
 }

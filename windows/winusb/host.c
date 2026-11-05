@@ -14,6 +14,7 @@ static void release(void *opaque,void *p) { (void)opaque; free(p); }
 static int native_control(void *opaque,const struct usb_window_control *c,void *data,unsigned timeout)
 {
     struct xz_host *h=opaque;
+    h->xz_read_cache.valid=false;
     return xz_control(h,c->request_type,c->value,c->index,data,c->length,timeout);
 }
 static const struct usb_native_ops native_ops={.control=native_control};
@@ -51,7 +52,7 @@ static int exchange(void *opaque,const uint8_t tx[64],uint8_t rx[64])
             h->progress_stage,offset,length,now-h->operation_started,h->progress_controls);
         h->progress_updated=now;
     }
-    return usb_xz_exchange(&native_ops,h,tx,rx);
+    return usb_xz_exchange_cached(&native_ops,h,&h->xz_read_cache,tx,rx);
 }
 static int read_window(void *opaque,uint32_t address,void *data,uint16_t size)
 {
@@ -80,7 +81,7 @@ static int write_window(void *opaque,uint32_t address,const void *data,uint16_t 
     if(!h->boot0_saved) {
         /* Loader has read all of these before its first boot0 write. */
         const struct mb86H_loader *l=&h->loader;
-        rc=snapshot_write(h,"XZWINS01",8);
+        rc=snapshot_write(h,l->preserve_all_ram?"XZWINS01":"XZWINS02",8);
         if(!rc) rc=snapshot_write(h,l->hook,sizeof(l->hook));
         if(!rc) rc=snapshot_write(h,l->body,sizeof(l->body));
         if(!rc) rc=snapshot_write(h,l->ep0_hook,sizeof(l->ep0_hook));
@@ -98,6 +99,7 @@ static int write_window(void *opaque,uint32_t address,const void *data,uint16_t 
 static int snapshot(void *opaque,const struct mb86H_loader *l)
 {
     struct xz_host *h=opaque;
+    if (!l->preserve_all_ram) return snapshot_flush(h);
     int rc=snapshot_write(h,"RESIDENT",8);
     if(!rc) rc=snapshot_write(h,l->resident_saved,MB86H_RESIDENT_BYTES);
     if(!rc) rc=snapshot_flush(h);

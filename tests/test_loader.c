@@ -206,8 +206,8 @@ static int block_writes(void *opaque, bool enable)
 static int snapshot(void *opaque, const struct mb86H_loader *loader)
 {
     struct mock *m = opaque;
-    if (!loader->resident_saved ||
-        (loader->is_torne && (!loader->torne_boot0_saved ||
+    if ((loader->preserve_all_ram && !loader->resident_saved) ||
+        (loader->preserve_all_ram && loader->is_torne && (!loader->torne_boot0_saved ||
                               memcmp(loader->torne_out_original,
                                      "\xb4\x27\x9f\x8d", 4))))
         return -1;
@@ -258,6 +258,7 @@ static int test_torne(bool initialize)
         .session = &session, .session_ops = &session_ops, .now_ms = now_ms,
         .delay_ms = delay_ms, .allocate = allocate, .release = release,
         .block_writes = block_writes, .snapshot = snapshot, .mismatch = mismatch,
+        .preserve_all_ram = true,
     };
     struct mb86H_loader loader;
     size_t root_boot_size = MB86H_BOOT0_BODY_OFFSET + sizeof(loader.body);
@@ -334,6 +335,22 @@ static int test_torne(bool initialize)
     CHECK(!memcmp(m.boot + MB86H_BOOT0_STAGING_ADDRESS, staging, sizeof(staging)));
     for (i = 0; i < MB86H_TORNE_BOOT0_BODY_BYTES; ++i)
         CHECK(m.boot[MB86H_TORNE_BOOT0_BODY_ADDRESS + i] == 0x3c);
+    {
+        struct mb86H_loader_ops patch_ops = ops;
+        unsigned writes;
+        patch_ops.preserve_all_ram = false;
+        CHECK(!mb86H_loader_parse_target(&loader, bundle, total, true));
+        CHECK(!mb86H_loader_start(&loader, &patch_ops, &m));
+        CHECK(!loader.resident_saved && !loader.torne_boot0_saved &&
+              !loader.torne_ts_ring_saved && !loader.torne_ts_ring_snapshot);
+        CHECK(mb86H_loader_snapshot_size(&loader) == 2140u);
+        writes = m.image_writes;
+        CHECK(!mb86H_loader_close(&loader, &patch_ops, &m));
+        CHECK(m.image_writes == writes);
+        CHECK(!memcmp(m.boot + MB86H_TORNE_BOOT0_CODE_ADDRESS,
+              bundle + sony_original + MB86H_TORNE_BOOT0_CODE_ADDRESS - MB86H_BOOT0_BASE,
+              MB86H_TORNE_BOOT0_CODE_BYTES));
+    }
     if (initialize) {
         struct mb86H_loader fresh;
         unsigned images, windows, inits;
@@ -368,7 +385,8 @@ int main(void)
     struct mb86H_loader_ops ops = { .window_read = window_read,
         .window_write = window_write, .session = &session,
         .session_ops = &session_ops, .now_ms = now_ms, .delay_ms = delay_ms,
-        .allocate = allocate, .release = release, .mismatch = mismatch };
+        .allocate = allocate, .release = release, .mismatch = mismatch,
+        .preserve_all_ram = true };
     struct mb86H_loader loader;
     size_t boot_size = MB86H_BOOT0_BODY_OFFSET + sizeof(loader.body);
     size_t original = 64, image = original + boot_size;
@@ -416,6 +434,28 @@ int main(void)
                   bundle + original + MB86H_BOOT0_HOOK_OFFSET, sizeof(loader.hook)));
     CHECK(!memcmp(m.boot + MB86H_BOOT0_BODY_ADDRESS,
                   bundle + original + MB86H_BOOT0_BODY_OFFSET, sizeof(loader.body)));
+    {
+        struct mb86H_loader_ops patch_ops = ops;
+        unsigned reads = m.resident_block_reads;
+        unsigned writes;
+        patch_ops.preserve_all_ram = false;
+        CHECK(!mb86H_loader_parse(&loader, bundle, total));
+        CHECK(!mb86H_loader_start(&loader, &patch_ops, &m));
+        CHECK(!loader.resident_saved && loader.patches_saved);
+        CHECK(mb86H_loader_snapshot_size(&loader) == 2412u);
+        /* Only the mandatory program verification plus commit read: no backup. */
+        CHECK(m.resident_block_reads - reads ==
+              (MB86H_RESIDENT_BYTES + MB86H_RESIDENT_BLOCK_BYTES - 1) / MB86H_RESIDENT_BLOCK_BYTES + 1);
+        writes = m.image_writes;
+        CHECK(!mb86H_loader_close(&loader, &patch_ops, &m));
+        CHECK(m.image_writes == writes && !loader.patches_saved);
+        CHECK(!memcmp(m.boot + MB86H_BOOT0_HOOK_ADDRESS,
+              bundle + original + MB86H_BOOT0_HOOK_OFFSET, sizeof(loader.hook)));
+        CHECK(!memcmp(m.boot + MB86H_BOOT0_BODY_ADDRESS,
+              bundle + original + MB86H_BOOT0_BODY_OFFSET, sizeof(loader.body)));
+        CHECK(!memcmp(m.resident, bundle + resident, MB86H_RESIDENT_BYTES));
+        memcpy(before, m.resident, MB86H_RESIDENT_BYTES);
+    }
     {
         struct mb86H_loader dt={.target=MB86H_BOOTSTRAP_DT295,.resident_active=true,
             .resident_attempted=true,.hook_attempted=true,.body_attempted=true,
