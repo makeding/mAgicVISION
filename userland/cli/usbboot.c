@@ -262,11 +262,13 @@ static int snapshot(void *opaque, const struct mb86H_loader *loader)
         else if (loader->preserve_all_ram && loader->is_torne) rc = snapshot_write(f, "MBBOOT03", 8);
         if (!rc) rc = mb86H_loader_snapshot_write(loader, snapshot_write, f);
     }
+    long bytes = ftell(f);
+    if (bytes < 0) rc = -EIO;
     if (fflush(f) || fsync(fileno(f))) rc = -EIO;
     if (fclose(f)) rc = -EIO;
     if (loader->adopted) account(ctx->log, fprintf(ctx->log->file,
         "{\"event\":\"adopted-preimage\",\"file\":\"preimage.bin\","
-        "\"bytes\":%u,\"result\":%d}\n", (unsigned)(20 + MB86H_RESIDENT_BYTES), rc));
+        "\"bytes\":%ld,\"result\":%d}\n", bytes, rc));
     return rc;
 }
 struct capture_options {
