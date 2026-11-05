@@ -61,6 +61,7 @@ struct mb86H_loader {
     uint8_t ep0_hook[2][8];
     uint8_t ep0_attempted;
     uint8_t *resident_saved;
+    const uint8_t *adopted_original_resident;
     uint8_t *torne_boot0_saved;
     uint8_t *torne_ts_ring_saved;
     uint8_t torne_hook[8];
@@ -106,7 +107,8 @@ int mb86H_loader_start(struct mb86H_loader *loader,
                            const struct mb86H_loader_ops *ops,
                            void *opaque);
 /* Replace only a verified resident over the existing installed bootstrap.
- * The owner retains the original complete preimage for final restoration. */
+ * An adopted owner snapshots its current resident before the first update;
+ * it cannot restore an unavailable pre-adoption boot0 image. */
 int mb86H_loader_update(struct mb86H_loader *owner,
                         const struct mb86H_loader_ops *, void *opaque,
                         const struct mb86H_loader *replacement);

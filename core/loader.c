@@ -662,7 +662,11 @@ static int same_bootstrap(const struct mb86H_loader *owner,
 static int update_ready(const struct mb86H_loader *owner)
 {
     const struct mb86H_native_boot_profile *profile;
-    if(!owner || owner->adopted || owner->recovery_error || !owner->resident_active ||
+    if(!owner || owner->recovery_error || !owner->resident_active)
+        return -EINVAL;
+    if(owner->adopted)
+        return owner->preserve_all_ram ? 0 : -EINVAL;
+    if(
        (owner->preserve_all_ram && !owner->resident_saved) || !owner->resident_attempted || !owner->hook_attempted ||
        !owner->body_attempted)
         return -EINVAL;
@@ -673,6 +677,43 @@ static int update_ready(const struct mb86H_loader *owner)
                                 !owner->torne_ts_ring_saved))))
         return -EINVAL;
     return 0;
+}
+
+static int snapshot_adopted_resident(struct mb86H_loader *owner,
+                                    const struct mb86H_loader_ops *ops,
+                                    void *opaque)
+{
+    struct mb86H_resident_image_ops image_ops = resident_image_ops(ops);
+    uint8_t *saved;
+    uint32_t offset;
+    int rc = 0;
+
+    if(!ops->allocate || !ops->release) return -EINVAL;
+    saved = ops->allocate(opaque, MB86H_RESIDENT_BYTES);
+    if(!saved) return -ENOMEM;
+    for(offset=0; !rc && offset<MB86H_RESIDENT_BYTES; offset+=MB86H_RESIDENT_BLOCK_BYTES) {
+        uint32_t length=MB86H_RESIDENT_BYTES-offset;
+        if(length>MB86H_RESIDENT_BLOCK_BYTES) length=MB86H_RESIDENT_BLOCK_BYTES;
+        rc=mb86H_resident_image_block(&image_ops,opaque,offset,false,0,saved+offset,length);
+    }
+    if(!rc) rc=mb86H_resident_image_validate(saved);
+    if(!rc && memcmp(saved+resident_offset(MB86H_RESIDENT_BUILD_ID),
+                      owner->resident+resident_offset(MB86H_RESIDENT_BUILD_ID),8))
+        rc=-EKEYREJECTED;
+    if(rc) ops->release(opaque,saved);
+    else {
+        owner->resident_saved=saved;
+        owner->adopted_original_resident=owner->resident;
+        if(ops->snapshot) {
+            rc=ops->snapshot(opaque,owner);
+            if(rc) {
+                ops->release(opaque,saved);
+                owner->resident_saved=0;
+                owner->adopted_original_resident=0;
+            }
+        }
+    }
+    return rc;
 }
 
 static int update_capabilities(struct mb86H_loader *owner,
@@ -719,11 +760,21 @@ int mb86H_loader_update(struct mb86H_loader *owner,
     if(rc)return rc;
     rc=mb86H_loader_update_validate(owner,replacement);
     if(rc)return rc;
+    if(owner->adopted && !owner->resident_saved) {
+        rc=snapshot_adopted_resident(owner,ops,opaque);
+        if(rc)return rc;
+    }
     rc=shutdown_resident(owner,ops,opaque);
-    if(rc)return rc;
+    if(rc) {
+        if(owner->adopted) owner->recovery_error=rc;
+        return rc;
+    }
     image_ops=resident_image_ops(ops);
     rc=mb86H_resident_image_program(&image_ops,opaque,replacement->resident);
-    if(rc)return rc;
+    if(rc) {
+        if(owner->adopted) owner->recovery_error=rc;
+        return rc;
+    }
     /* CAPS enters the new code. Even if its reply fails, restoration must
      * retire that potentially active owner before replacing original RAM. */
     owner->resident_active=true;
@@ -745,9 +796,20 @@ static int loader_restore_inner(struct mb86H_loader *loader,
     if (!loader || !ops || !ops->window_read || !ops->window_write || !ops->release) return -EINVAL;
     if (loader->adopted) {
         if (loader->recovery_error) return loader->recovery_error;
-        /* Original pre-crash host snapshots are gone. Retire ownership but
-         * leave the validated inactive image for the next owner's adoption. */
-        return shutdown_resident(loader, ops, opaque);
+        rc=shutdown_resident(loader, ops, opaque);
+        if(rc || !loader->resident_saved) return rc;
+        /* The snapshot is the exact pre-OTA resident, not unknown factory RAM. */
+        image_ops=resident_image_ops(ops);
+        rc=mb86H_resident_image_program(&image_ops,opaque,loader->resident_saved);
+        if(rc)return rc;
+        loader->resident_active=true;
+        rc=shutdown_resident(loader, ops, opaque);
+        if(rc)return rc;
+        ops->release(opaque,loader->resident_saved);
+        loader->resident_saved=0;
+        loader->resident=loader->adopted_original_resident;
+        loader->adopted_original_resident=0;
+        return 0;
     }
     if (mb86H_loader_native_profile(loader)) return native_restore(loader, ops, opaque);
     rc = shutdown_resident(loader, ops, opaque);

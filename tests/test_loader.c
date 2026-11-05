@@ -526,6 +526,40 @@ int main(void)
         CHECK(!mb86H_loader_restore(&loader,&ops,&m));
         CHECK(!memcmp(m.resident,before,MB86H_RESIDENT_BYTES));
         m.capability_mask=3;
+        {
+            struct mb86H_loader adopted;
+            unsigned boot_writes, recover_calls=m.recover_calls;
+            mb86H_session_reset(&session);
+            CHECK(!mb86H_loader_start(&loader,&ops,&m));
+            mb86H_session_reset(&session);
+            CHECK(!mb86H_loader_parse(&adopted,bundle,total));
+            CHECK(!mb86H_loader_install(&adopted,&ops,&m));
+            CHECK(adopted.adopted && adopted.resident_active && !adopted.resident_saved);
+            adopted.preserve_all_ram=true;
+            boot_writes=m.window_writes;
+            CHECK(!mb86H_loader_update(&adopted,&ops,&m,&replacement));
+            CHECK(adopted.resident_saved && adopted.resident==replacement.resident);
+            CHECK(!mb86H_loader_update(&adopted,&ops,&m,&original_view));
+            CHECK(!mb86H_loader_restore(&adopted,&ops,&m));
+            CHECK(!adopted.resident_saved && !adopted.resident_active &&
+                  adopted.resident==original_view.resident);
+            CHECK(m.window_writes==boot_writes);
+            CHECK(!memcmp(m.resident,bundle+resident,MB86H_RESIDENT_BYTES));
+            mb86H_session_reset(&session);
+            CHECK(!mb86H_loader_parse(&adopted,bundle,total));
+            CHECK(!mb86H_loader_install(&adopted,&ops,&m));
+            CHECK(adopted.adopted);
+            m.bad_capability_build=true;
+            CHECK(mb86H_loader_update(&adopted,&ops,&m,&replacement)==-EPROTO);
+            m.bad_capability_build=false;
+            CHECK(adopted.resident_saved && adopted.resident_active);
+            CHECK(!mb86H_loader_restore(&adopted,&ops,&m));
+            CHECK(!memcmp(m.resident,bundle+resident,MB86H_RESIDENT_BYTES));
+            CHECK(m.window_writes==boot_writes);
+            CHECK(!mb86H_loader_restore(&loader,&ops,&m));
+            CHECK(!memcmp(m.resident,before,MB86H_RESIDENT_BYTES));
+            m.recover_calls=recover_calls;
+        }
         free(update_bundle);
     }
     m.writes = 0; m.fail_after = 3;

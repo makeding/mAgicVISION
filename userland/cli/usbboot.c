@@ -245,11 +245,28 @@ static int snapshot(void *opaque, const struct mb86H_loader *loader)
     FILE *f = new_file(ctx->directory, "preimage.bin");
     int rc = 0;
     if (!f) return -errno;
-    if (loader->preserve_all_ram && loader->target == MB86H_BOOTSTRAP_DT295) rc = snapshot_write(f, "MBBOOT04", 8);
-    else if (loader->preserve_all_ram && loader->is_torne) rc = snapshot_write(f, "MBBOOT03", 8);
-    if (!rc) rc = mb86H_loader_snapshot_write(loader, snapshot_write, f);
+    if (loader->adopted) {
+        uint8_t header[20] = {0};
+        if (!loader->preserve_all_ram || !loader->resident_saved ||
+            !loader->adopted_original_resident) rc = -EINVAL;
+        if (!rc) {
+            memcpy(header, "MBADOPT1", 8);
+            mb86H_debug_u32be_put(header + 8, loader->target);
+            memcpy(header + 12, loader->resident_saved +
+                   MB86H_RESIDENT_BUILD_ID - MB86H_RESIDENT_BASE, 8);
+            rc = snapshot_write(f, header, sizeof(header));
+        }
+        if (!rc) rc = snapshot_write(f, loader->resident_saved, MB86H_RESIDENT_BYTES);
+    } else {
+        if (loader->preserve_all_ram && loader->target == MB86H_BOOTSTRAP_DT295) rc = snapshot_write(f, "MBBOOT04", 8);
+        else if (loader->preserve_all_ram && loader->is_torne) rc = snapshot_write(f, "MBBOOT03", 8);
+        if (!rc) rc = mb86H_loader_snapshot_write(loader, snapshot_write, f);
+    }
     if (fflush(f) || fsync(fileno(f))) rc = -EIO;
     if (fclose(f)) rc = -EIO;
+    if (loader->adopted) account(ctx->log, fprintf(ctx->log->file,
+        "{\"event\":\"adopted-preimage\",\"file\":\"preimage.bin\","
+        "\"bytes\":%u,\"result\":%d}\n", (unsigned)(20 + MB86H_RESIDENT_BYTES), rc));
     return rc;
 }
 struct capture_options {
@@ -557,10 +574,11 @@ static int download_firmware(struct usb_device *device, struct mb86H_loader *loa
             account(log,fprintf(log->file,"{\"event\":\"ota-round\",\"round\":%u,\"result\":%d,\"expected_build_id\":\"",round,rc));
             for (unsigned i=0;i<8;++i)account(log,fprintf(log->file,"%02x",expected[i]));
             account(log,fprintf(log->file,"\",\"observed_build_id\":\""));
-            for (unsigned i=0;i<8;++i)account(log,fprintf(log->file,"%02x",reply[36+i]));
+            for (unsigned i=0;i<8;++i)account(log,fprintf(log->file,"%02x",reply[40+i]));
             account(log,fprintf(log->file,"\",\"compiled_build_id\":\""));
             for (unsigned i=0;i<8;++i)account(log,fprintf(log->file,"%02x",reply[48+i]));
-            account(log,fprintf(log->file,"\"}\n"));
+            account(log,fprintf(log->file,"\",\"owner_adopted\":%s}\n",
+                loader->adopted ? "true" : "false"));
             printf("ota_round=%u result=%d build_id=",round,rc);
             for(unsigned i=0;i<8;++i)printf("%02x",reply[48+i]);
             putchar('\n');
