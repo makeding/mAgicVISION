@@ -530,6 +530,19 @@ static int capture_firmware(struct firmware_context *ctx,
     return rc;
 }
 
+static bool card_probe_enabled;
+static int card_command(void *opaque,unsigned operation,const uint8_t data[40],
+                        uint8_t response[64])
+{
+    struct firmware_context *ctx=opaque;
+    return mb86H_session_command(ctx->session,ctx->session_ops,ctx,
+        MB86H_RESIDENT_COMMAND_CARD,operation,data,response);
+}
+static uint32_t card_now(void *opaque)
+{return monotonic_ms(opaque);}
+static void card_delay(void *opaque,unsigned milliseconds)
+{delay_ms(opaque,milliseconds);}
+
 static int download_firmware(struct usb_device *device, struct mb86H_loader *loader,
                               struct log_context *log, const char *directory,
                               const struct mb86H_loader *alternative,
@@ -586,6 +599,25 @@ static int download_firmware(struct usb_device *device, struct mb86H_loader *loa
             printf("ota_round=%u result=%d build_id=",round,rc);
             for(unsigned i=0;i<8;++i)printf("%02x",reply[48+i]);
             putchar('\n');
+            if(!rc && card_probe_enabled && round==1) {
+                struct mb86H_card card;
+                uint8_t icc=0xff, atr[MB86H_CARD_MAX_ATR];
+                size_t atr_length=sizeof atr;
+                const struct mb86H_card_ops card_ops={card_command,card_now,card_delay};
+                mb86H_card_init(&card,&card_ops,&ctx);
+                int status_rc=mb86H_card_status(&card,&icc);
+                int reset_rc=status_rc?status_rc:mb86H_card_reset(&card,atr,&atr_length);
+                int off_rc=0;
+                if(!reset_rc || card.active) off_rc=mb86H_card_power_off(&card);
+                account(log,fprintf(log->file,
+                    "{\"event\":\"card-probe\",\"round\":1,\"status_result\":%d,\"icc\":%u,"
+                    "\"reset_result\":%d,\"firmware_result\":%d,\"atr_length\":%zu,"
+                    "\"power_off_result\":%d}\n",
+                    status_rc,(unsigned)icc,reset_rc,card.firmware_result,
+                    reset_rc?0:atr_length,off_rc));
+                printf("card_status=%d icc=%u card_reset_result=%d firmware_result=%d atr_len=%zu card_power_off=%d\n",
+                    status_rc,(unsigned)icc,reset_rc,card.firmware_result,reset_rc?0:atr_length,off_rc);
+            }
         }
         if(rc)break;
     }
@@ -638,7 +670,8 @@ int main(int argc, char **argv)
         parse_id(argv[3], &product)) goto usage;
     capture = !strcmp(argv[1], "read-boot0");
     prepare = !strcmp(argv[1], "prepare");
-    ota = !strcmp(argv[1], "ota");
+    card_probe_enabled = !strcmp(argv[1], "ota-card");
+    ota = !strcmp(argv[1], "ota") || card_probe_enabled;
     sequence = !strcmp(argv[1], "capture-sequence");
     record = sequence || !strcmp(argv[1], "capture");
     start = !strcmp(argv[1], "start");
@@ -847,6 +880,7 @@ usage:
                     "       usbboot download VID PID FIRMWARE_BUNDLE NEW_EVIDENCE_DIRECTORY\n"
                     "       usbboot start VID PID FIRMWARE_BUNDLE NEW_EVIDENCE_DIRECTORY\n"
                     "       usbboot ota VID PID FIRMWARE_A FIRMWARE_B NEW_EVIDENCE_DIRECTORY\n"
+                    "       usbboot ota-card VID PID FIRMWARE_A FIRMWARE_B NEW_EVIDENCE_DIRECTORY\n"
                     "       usbboot capture VID PID BUNDLE SOURCE FREQUENCY TSID|auto DURATION_MS NEW_DIRECTORY\n"
                     "       usbboot capture-sequence VID PID BUNDLE NEWDIR S F TSID MS S F TSID MS S F TSID MS [S F TSID MS]\n"
                     "start initializes and restores patches; download/ota preserve and restore all RAM.\n");
