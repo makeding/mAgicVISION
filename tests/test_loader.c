@@ -528,7 +528,7 @@ int main(void)
         m.capability_mask=3;
         {
             struct mb86H_loader adopted;
-            unsigned boot_writes, recover_calls=m.recover_calls;
+            unsigned boot_writes, shutdown_before, recover_calls=m.recover_calls;
             mb86H_session_reset(&session);
             CHECK(!mb86H_loader_start(&loader,&ops,&m));
             mb86H_session_reset(&session);
@@ -540,7 +540,9 @@ int main(void)
             CHECK(!mb86H_loader_update(&adopted,&ops,&m,&replacement));
             CHECK(adopted.resident_saved && adopted.resident==replacement.resident);
             CHECK(!mb86H_loader_update(&adopted,&ops,&m,&original_view));
+            shutdown_before=m.shutdown_calls;
             CHECK(!mb86H_loader_restore(&adopted,&ops,&m));
+            CHECK(m.shutdown_calls==shutdown_before+1);
             CHECK(!adopted.resident_saved && !adopted.resident_active &&
                   adopted.resident==original_view.resident);
             CHECK(m.window_writes==boot_writes);
@@ -553,7 +555,9 @@ int main(void)
             CHECK(mb86H_loader_update(&adopted,&ops,&m,&replacement)==-EPROTO);
             m.bad_capability_build=false;
             CHECK(adopted.resident_saved && adopted.resident_active);
+            shutdown_before=m.shutdown_calls;
             CHECK(!mb86H_loader_restore(&adopted,&ops,&m));
+            CHECK(m.shutdown_calls==shutdown_before+1);
             CHECK(!memcmp(m.resident,bundle+resident,MB86H_RESIDENT_BYTES));
             CHECK(m.window_writes==boot_writes);
             CHECK(!mb86H_loader_restore(&loader,&ops,&m));

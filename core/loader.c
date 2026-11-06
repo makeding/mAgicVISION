@@ -802,9 +802,16 @@ static int loader_restore_inner(struct mb86H_loader *loader,
         image_ops=resident_image_ops(ops);
         rc=mb86H_resident_image_program(&image_ops,opaque,loader->resident_saved);
         if(rc)return rc;
+        /* Commit made the saved resident callable again.  Check its live
+         * identity without changing the restored state before releasing the
+         * only complete preimage. */
         loader->resident_active=true;
-        rc=shutdown_resident(loader, ops, opaque);
+        rc=update_capabilities(loader,ops,opaque,loader->resident_saved);
         if(rc)return rc;
+        /* Adoption RECOVER quiesced this exact preimage before it was saved.
+         * A second SHUTDOWN would mutate restored RAM and can time out after
+         * the commit has already returned control to the original resident. */
+        loader->resident_active=false;
         ops->release(opaque,loader->resident_saved);
         loader->resident_saved=0;
         loader->resident=loader->adopted_original_resident;
