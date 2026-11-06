@@ -29,12 +29,29 @@ If you would like us to support a device, we would appreciate it if you could se
 - Windows WinUSB support
 - BonDriver support
 
+## Firmware / host compatibility
+
+The firmware (FW) is closed source, while the host/driver is open source.  
+FW and host versions do not need to match one-to-one; **they only need to share the same ABI version**.
+
+Releases are labeled like `v1 + 0.1.1`, where `v1` is the FW ABI compatibility version and `0.1.1` is the normal version. Any host/FW combination within the `V1` range should work for most features (some edge features may be incompatible, but this generally does not affect viewing).
+
+Still, to get the latest fixes and features, **updating the host and FW together is strongly recommended**.
+
 ## Installation (Debian / Ubuntu)
 Download the two `.deb` packages, `firmware` and `dkms`, from [GitHub Releases](https://github.com/makeding/mAgicVISION/releases).
 ```sh
 sudo apt install linux-headers-$(uname -r)
 sudo apt install ./magicvision-firmware_*_all.deb ./magicvision-usb-dkms_*_all.deb
 ```
+
+If you only need the firmware, extract it from the `.deb` in the Release.
+
+```sh
+dpkg-deb -x ./magicvision-firmware_*_all.deb firmware-extract
+```
+
+`firmware.bin` is extracted to `firmware-extract/usr/lib/firmware/magicvision/firmware.bin`.
 
 ## Installation (NixOS)
 

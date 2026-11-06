@@ -29,12 +29,29 @@ mAgicVISION は、mb86 系テレビチューナー向けのドライバーです
 - Windows WinUSB対応
 - BonDriver対応
 
+## ファームウェアとホストの互換性
+
+ファームウェア（FW）はクローズドソース、ホスト／ドライバーはオープンソースで提供しています。  
+FW とホストのバージョンを 1 対 1 で対応させる必要はなく、**ABI バージョンが同一であれば組み合わせて使用できます**。
+
+リリースでは `v1 + 0.1.1` のように表記します。`v1` が FW の ABI 互換バージョン、`0.1.1` が通常のバージョンです。`V1` の範囲内であれば、どのホストと FW の組み合わせでもほとんどの機能が動作します（一部のエッジ機能で非互換が生じる場合がありますが、視聴にはほぼ影響しません）。
+
+ただし、最新の機能や修正を利用するため、**ホストと FW はできるだけ同時に更新することを強く推奨します**。
+
 ## インストール（Debian / Ubuntu）
 [GitHub Releases](https://github.com/makeding/mAgicVISION/releases) から `firmware` と `dkms` の2つの `.deb` をダウンロードします。
 ```sh
 sudo apt install linux-headers-$(uname -r)
 sudo apt install ./magicvision-firmware_*_all.deb ./magicvision-usb-dkms_*_all.deb
 ```
+
+`firmware` のみが必要な場合は、Release の `.deb` を展開して取り出してください。
+
+```sh
+dpkg-deb -x ./magicvision-firmware_*_all.deb firmware-extract
+```
+
+`firmware.bin` は `firmware-extract/usr/lib/firmware/magicvision/firmware.bin` に展開されます。
 
 ## インストール（NixOS）
 
