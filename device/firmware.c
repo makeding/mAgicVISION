@@ -14,7 +14,7 @@ int mb86H_device_firmware_parse(const struct mb86H_device_info *device,
     unsigned target;
     int rc;
     if (!device || !loader) return -EINVAL;
-    if (device->runtime_protocol != MB86H_RUNTIME_RESIDENT_V1) return -EOPNOTSUPP;
+    if (device->runtime_protocol != MB86H_RUNTIME_RESIDENT) return -EOPNOTSUPP;
     switch (device->firmware_target) {
     case MB86H_FIRMWARE_XZ: target = MB86H_BOOTSTRAP_XZ; break;
     case MB86H_FIRMWARE_TORNE: target = MB86H_BOOTSTRAP_TORNE; break;

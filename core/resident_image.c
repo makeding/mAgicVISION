@@ -27,7 +27,7 @@ int mb86H_resident_image_validate(const uint8_t *image)
     if (!image) return -EINVAL;
     meta = image + resident_offset(MB86H_RESIDENT_META);
     if (mb86H_be32_get(meta) != MB86H_RESIDENT_HEADER_MAGIC ||
-        mb86H_be32_get(meta + 4) != MB86H_RESIDENT_ABI_VERSION ||
+        mb86H_be32_get(meta + 4) != MB86H_MIN_SUPPORTED_ABI ||
         mb86H_be32_get(meta + 8) != MB86H_RESIDENT_BYTES ||
         mb86H_be32_get(meta + 12) != MB86H_RESIDENT_BASE ||
         mb86H_be32_get(meta + 16) != MB86H_RESIDENT_IMMUTABLE_END ||

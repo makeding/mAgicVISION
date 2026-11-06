@@ -11,7 +11,7 @@ static const struct mb86H_device_info gv_mvp_xz = {
     .product = USB_PRODUCT_ID,
     .frontend_count = 2,
     .delivery_systems = (1U << MB86H_DVB_GR) | (1U << MB86H_DVB_BSCS),
-    .runtime_protocol = MB86H_RUNTIME_RESIDENT_V1,
+    .runtime_protocol = MB86H_RUNTIME_RESIDENT,
     .firmware_target = MB86H_FIRMWARE_XZ,
     .usb_boot = &mb86H_gv_mvp_xz_boot_ops,
 };

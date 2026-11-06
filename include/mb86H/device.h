@@ -20,7 +20,7 @@ struct usb_boot_ops;
 struct mb86H_loader;
 enum mb86H_runtime_protocol {
     MB86H_RUNTIME_NONE,
-    MB86H_RUNTIME_RESIDENT_V1,
+    MB86H_RUNTIME_RESIDENT,
 };
 enum mb86H_firmware_target {
     MB86H_FIRMWARE_NONE,

@@ -14,14 +14,13 @@ static void delay(void *p, unsigned ms) { ((struct fake *)p)->now += ms; }
 static int command(void *p, unsigned op, const uint8_t data[40], uint8_t rx[64])
 {
     struct fake *f = p;
-    unsigned offset = (unsigned)data[2] << 8 | data[3];
+    unsigned offset = (unsigned)data[1] << 8 | data[2];
     ++f->calls;
     if (f->transport) return f->transport;
-    assert(data[0] == MB86H_CARD_VERSION);
+    assert(!data[3]);
     memset(rx, 0, 64);
     mb86H_debug_u32be_put(rx + 8, MB86H_DEBUG_OK);
     mb86H_debug_u32be_put(rx + 16, f->generation_mismatch ? 8 : 7);
-    rx[24] = MB86H_CARD_VERSION;
     rx[39] = !f->absent;rx[38] = f->state != 0;
     if (f->rejected) {
         mb86H_debug_u32be_put(rx + 8, MB86H_DEBUG_FATAL);
@@ -38,17 +37,17 @@ static int command(void *p, unsigned op, const uint8_t data[40], uint8_t rx[64])
     case MB86H_CARD_SERVICE: f->state = 2; break;
     case MB86H_CARD_STATUS: break;
     case MB86H_CARD_ATR_READ:
-        rx[25] = f->malformed ? 34 : 2; rx[27] = 2;
+        rx[24] = f->malformed ? 34 : 2; rx[26] = 2;
         rx[32] = 0x3b; rx[33] = 0;
         break;
     case MB86H_CARD_POWER_OFF: f->state = 0; break;
     case MB86H_CARD_TX_BEGIN: f->upload = 0; break;
     case MB86H_CARD_TX_DATA:
-        assert(offset == f->upload && data[1] && data[1] <= 32);
-        f->upload += data[1]; break;
+        assert(offset == f->upload && data[0] && data[0] <= 32);
+        f->upload += data[0]; break;
     case MB86H_CARD_TRANSMIT: ++f->transmit; f->state = 6; break;
     case MB86H_CARD_RX_READ:
-        rx[25] = 2; rx[27] = 2; rx[32] = 0x90; rx[33] = 0; break;
+        rx[24] = 2; rx[26] = 2; rx[32] = 0x90; rx[33] = 0; break;
     default: assert(0);
     }
     mb86H_debug_u32be_put(rx + 12, f->state);

@@ -2,12 +2,12 @@
 /* Native bootstrap inspection over the same libusb owner as the receiver. */
 #define _POSIX_C_SOURCE 200809L
 #include "mb86H/device.h"
-#include "mb86H/card.h"
 #include "mb86H/usb/libusb.h"
 #include "mb86H/loader.h"
 #include "mb86H/device_query.h"
 #include "mb86H/protocol.h"
 #include "mb86H/receiver.h"
+#include "mb86H/card.h"
 #include <pthread.h>
 #include <stdatomic.h>
 #include <errno.h>
@@ -546,8 +546,7 @@ static void card_delay(void *opaque,unsigned milliseconds)
 static int download_firmware(struct usb_device *device, struct mb86H_loader *loader,
                               struct log_context *log, const char *directory,
                               const struct mb86H_loader *alternative,
-                              bool initialize,
-                              const struct capture_options *capture_options, unsigned capture_count)
+                              bool initialize, const struct capture_options *capture_options, unsigned capture_count)
 {
     const struct mb86H_loader original = *loader;
     struct firmware_context ctx = {.device = device, .log = log, .directory = directory};
@@ -623,9 +622,9 @@ static int download_firmware(struct usb_device *device, struct mb86H_loader *loa
     }
     account(log, fprintf(log->file,
         "{\"time\":%.6f,\"event\":\"firmware\",\"result\":%d,\"identity\":\"%s\","
-        "\"resident_abi\":%u,\"rf_mask\":%u,\"stream_mask\":%u,\"window_version\":%u}\n",
-        timestamp(), rc, rc ? "" : MB86H_FIRMWARE_IDENTITY, overview.resident_abi,
-        overview.rf_mask, overview.stream_mask, overview.window_version));
+        "\"rf_mask\":%u,\"stream_mask\":%u}\n",
+        timestamp(), rc, rc ? "" : MB86H_FIRMWARE_IDENTITY,
+        overview.rf_mask, overview.stream_mask));
     int firmware_rc = rc;
     for (unsigned segment = 0; !rc && segment < capture_count; ++segment) {
         ctx.restoring = 0;
@@ -641,8 +640,8 @@ static int download_firmware(struct usb_device *device, struct mb86H_loader *loa
     account(log, fprintf(log->file,
         "{\"time\":%.6f,\"event\":\"%s\",\"result\":%d,\"exchanges\":%u,\"controls\":%u}\n",
         timestamp(), initialize ? "firmware-close" : "restore", restored, ctx.exchanges, log->controls));
-    printf("firmware_result=%d identity=%s resident_abi=%u %s_result=%d\n",
-           firmware_rc, firmware_rc ? "unverified" : MB86H_FIRMWARE_IDENTITY, overview.resident_abi,
+    printf("firmware_result=%d identity=%s %s_result=%d\n",
+           firmware_rc, firmware_rc ? "unverified" : MB86H_FIRMWARE_IDENTITY,
            initialize ? "firmware_close" : "restore", restored);
     return rc ? rc : restored;
 }
@@ -712,7 +711,7 @@ int main(int argc, char **argv)
            (unsigned)info->runtime_protocol);
     if (!strcmp(argv[1], "identify")) return 0;
     if (download || check_image) {
-        if (info->runtime_protocol != MB86H_RUNTIME_RESIDENT_V1 ||
+        if (info->runtime_protocol != MB86H_RUNTIME_RESIDENT ||
             info->firmware_target == MB86H_FIRMWARE_NONE) {
             fprintf(stderr, "Shared resident loader binding unavailable for this target\n"); return 3;
         }
@@ -751,7 +750,7 @@ int main(int argc, char **argv)
         printf("candidate_address=%#x candidate_bytes=%zu candidate_verified=false\n",
                info->usb_boot->candidate_address, info->usb_boot->candidate_size);
         printf("firmware_formats=SBC2,XZFB resident_loader=%s\n",
-               info->runtime_protocol == MB86H_RUNTIME_RESIDENT_V1 ? "available" : "unavailable");
+               info->runtime_protocol == MB86H_RUNTIME_RESIDENT ? "available" : "unavailable");
         return 0;
     }
     umask(0077);
@@ -795,8 +794,7 @@ int main(int argc, char **argv)
     rc = usb_libusb_observe_control(device, observe, &log);
     if (rc) goto done;
     if (download) {
-        rc = download_firmware(device, &loader, &log, directory, ota?&alternative:NULL,
-                               start || record, record?recording:NULL, capture_count);
+        rc = download_firmware(device, &loader, &log, directory, ota?&alternative:NULL, start || record, record?recording:NULL, capture_count);
         goto done;
     } else rc = prepare ? usb_libusb_prepare_boot0(device, &result) :
                    usb_libusb_observe_boot0(device, &result);

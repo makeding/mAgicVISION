@@ -186,7 +186,8 @@ int mb86H_loader_adopt(struct mb86H_loader *loader,
         /* XZ replaces the native BC-IN copy loop itself. Once published,
          * reading its hook/body through BC-IN no longer reads that memory:
          * it dispatches the staged packet. PING is side-effect free; factory
-         * boot0 echoes the staged request, the bootstrap returns OK/version1.
+         * boot0 echoes the staged request and the bootstrap returns OK plus
+         * the common identity length.
          * Resident executable bytes are still checked before any entry call. */
         rc = mb86H_session_exchange(ops->session, ops->session_ops, opaque,
                                     MB86H_DEBUG_PING, 0, 0, 0, data, reply);
@@ -194,7 +195,9 @@ int mb86H_loader_adopt(struct mb86H_loader *loader,
         if (mb86H_be32_get(reply + 8) == MB86H_DEBUG_PING && !mb86H_be32_get(reply + 12) &&
             !mb86H_be32_get(reply + 16) && !mb86H_be32_get(reply + 20) &&
             !memcmp(reply + 24, data, sizeof(data))) return 0;
-        if (mb86H_be32_get(reply + 8) != MB86H_DEBUG_OK || mb86H_be32_get(reply + 12) != 1)
+        if (mb86H_be32_get(reply + 8) != MB86H_DEBUG_OK ||
+            mb86H_be32_get(reply + 12) != 1 ||
+            mb86H_be32_get(reply + 20) != MB86H_MIN_SUPPORTED_ABI)
             return -EPROTO;
         goto gateway_ready;
     }
@@ -232,7 +235,9 @@ int mb86H_loader_adopt(struct mb86H_loader *loader,
     rc = mb86H_session_exchange(ops->session, ops->session_ops, opaque,
                                 MB86H_DEBUG_PING, 0, 0, 0, data, reply);
     if (rc) return rc;
-    if (mb86H_be32_get(reply + 8) != MB86H_DEBUG_OK || mb86H_be32_get(reply + 12) != 1)
+    if (mb86H_be32_get(reply + 8) != MB86H_DEBUG_OK ||
+        mb86H_be32_get(reply + 12) != 1 ||
+        mb86H_be32_get(reply + 20) != MB86H_MIN_SUPPORTED_ABI)
         return -EPROTO;
 gateway_ready:
     rc = validate_resident_anchors(loader, ops, opaque);
@@ -243,7 +248,7 @@ gateway_ready:
                                MB86H_RESIDENT_COMMAND_CAPABILITIES, 0, data, reply);
     if (rc) return rc;
     if (mb86H_be32_get(reply + 8) != MB86H_DEBUG_OK ||
-        mb86H_be32_get(reply + 16) != MB86H_RESIDENT_ABI_VERSION ||
+        mb86H_be32_get(reply + 16) != MB86H_MIN_SUPPORTED_ABI ||
         memcmp(reply + 24, MB86H_FIRMWARE_IDENTITY, MB86H_FIRMWARE_IDENTITY_BYTES) ||
         memcmp(reply + 40, loader->resident +
                MB86H_RESIDENT_BUILD_ID - MB86H_RESIDENT_BASE, 8) ||

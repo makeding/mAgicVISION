@@ -54,14 +54,11 @@ static int exchange(void *opaque, const uint8_t request[64], uint8_t response[64
         if(f->reinitializable)state.flags|=MB86H_DEVICE_STATE_REINITIALIZABLE;
         mb86H_debug_u32be_put(response + 12, MB86H_RESIDENT_COMMAND_DEVICE_QUERY);
         mb86H_debug_u32be_put(response + 16, page);
-        data[0] = MB86H_DEVICE_QUERY_VERSION;
-        data[1] = page;
-        data[2] = request[25];
+        data[0] = page;
+        data[1] = request[25];
         if (page == MB86H_DEVICE_QUERY_OVERVIEW) {
             struct mb86H_device_overview overview = {
                 .rf_mask = 3, .stream_mask = 3,
-                .resident_abi = MB86H_RESIDENT_ABI_VERSION,
-                .window_version = MB86H_STREAM_WINDOW_VERSION,
             };
             mb86H_query_overview_encode(data, &overview);
         } else if (page == MB86H_DEVICE_QUERY_STATE)
@@ -73,18 +70,17 @@ static int exchange(void *opaque, const uint8_t request[64], uint8_t response[64
         mb86H_debug_u32be_put(response + 8, MB86H_DEBUG_OK);
         mb86H_debug_u32be_put(response + 12, 1);
         mb86H_debug_u32be_put(response + 16,
-                               mb86H_debug_u32be_get(request + 32));
-        data[0] = MB86H_STREAM_WINDOW_VERSION;
-        data[1] = 1;
+                               mb86H_debug_u32be_get(request + 28));
+        data[0] = 1;
         data[2] = 1;
         if (f->window_wait)
             mb86H_debug_u32be_put(response + 20, 1);
         mb86H_debug_u32be_put(data + 4,
-                               mb86H_debug_u32be_get(request + 28));
+                               mb86H_debug_u32be_get(request + 24));
         mb86H_debug_u32be_put(data + 8,
-                               mb86H_debug_u32be_get(request + 32));
+                               mb86H_debug_u32be_get(request + 28));
         mb86H_debug_u32be_put(data + 28,
-                               mb86H_debug_u32be_get(request + 36));
+                               mb86H_debug_u32be_get(request + 32));
         if (f->bad_window)
             mb86H_debug_u32be_put(response + 12, 0);
         return 0;

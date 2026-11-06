@@ -114,6 +114,7 @@ static int exchange(void *opaque, const uint8_t request[64], uint8_t response[64
         }
         mb86H_debug_u32be_put(response + 8, MB86H_DEBUG_OK);
         mb86H_debug_u32be_put(response + 12, 1);
+        mb86H_debug_u32be_put(response + 20, MB86H_MIN_SUPPORTED_ABI);
         return 0;
     }
     if (op == MB86H_DEBUG_RESIDENT_BLOCK) {
@@ -132,13 +133,11 @@ static int exchange(void *opaque, const uint8_t request[64], uint8_t response[64
         unsigned page=argument;
         mb86H_debug_u32be_put(response + 12, MB86H_RESIDENT_COMMAND_DEVICE_QUERY);
         mb86H_debug_u32be_put(response + 16, page);
-        data[0]=MB86H_DEVICE_QUERY_VERSION;
-        data[1]=(uint8_t)page;
-        data[2]=request[25];
+        data[0]=(uint8_t)page;
+        data[1]=request[25];
         if(page==MB86H_DEVICE_QUERY_OVERVIEW) {
             struct mb86H_device_overview overview={
                 .rf_mask=m->capability_mask,.stream_mask=m->capability_mask,
-                .resident_abi=MB86H_RESIDENT_ABI_VERSION,
             };
             mb86H_query_overview_encode(data,&overview);
         } else if(page==MB86H_DEVICE_QUERY_STATE) {
@@ -152,7 +151,7 @@ static int exchange(void *opaque, const uint8_t request[64], uint8_t response[64
             mb86H_query_state_encode(data,&state);
         }
     } else if (address == MB86H_RESIDENT_COMMAND_CAPABILITIES) {
-        mb86H_debug_u32be_put(response + 16, MB86H_RESIDENT_ABI_VERSION);
+        mb86H_debug_u32be_put(response + 16, MB86H_MIN_SUPPORTED_ABI);
         memcpy(response + 24, MB86H_FIRMWARE_IDENTITY,
                MB86H_FIRMWARE_IDENTITY_BYTES);
         memcpy(response + MB86H_DEBUG_PACKET_DATA_OFFSET + 16,
@@ -168,6 +167,8 @@ static int exchange(void *opaque, const uint8_t request[64], uint8_t response[64
     } else if (address == MB86H_RESIDENT_COMMAND_RECOVER) {
         m->recover_calls++;
         if (m->recover_error) return m->recover_error;
+        /* Poison the old STATUS-layout bytes: recovery completion is v1
+         * DEVICE_QUERY state, never these legacy offsets. */
         response[26] = response[62] = response[63] = 0xa5;
         if (!(m->recover_calls % 3)) m->initialized = false;
     } else if (address == MB86H_RESIDENT_COMMAND_SHUTDOWN) {
@@ -231,7 +232,7 @@ static void make_resident_image(unsigned char *image)
     unsigned char *meta = image + MB86H_RESIDENT_META - MB86H_RESIDENT_BASE;
 
     mb86H_debug_u32be_put(meta, MB86H_RESIDENT_HEADER_MAGIC);
-    mb86H_debug_u32be_put(meta + 4, MB86H_RESIDENT_ABI_VERSION);
+    mb86H_debug_u32be_put(meta + 4, MB86H_MIN_SUPPORTED_ABI);
     mb86H_debug_u32be_put(meta + 8, MB86H_RESIDENT_BYTES);
     mb86H_debug_u32be_put(meta + 12, MB86H_RESIDENT_BASE);
     mb86H_debug_u32be_put(meta + 16, MB86H_RESIDENT_IMMUTABLE_END);

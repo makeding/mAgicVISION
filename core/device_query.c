@@ -10,15 +10,16 @@
 static int query(struct mb86H_session *session,const struct mb86H_session_ops *ops,
     void *opaque,unsigned page,unsigned source,uint8_t response[64])
 {
-    uint8_t data[40]={MB86H_DEVICE_QUERY_VERSION};
+    uint8_t data[40]={0};
     int rc;
     if(source>=MB86H_CHANNEL_COUNT)return -EINVAL;
+    data[0]=(uint8_t)page;
     data[1]=(uint8_t)source;
     rc=mb86H_session_command(session,ops,opaque,MB86H_RESIDENT_COMMAND_DEVICE_QUERY,page,data,response);
     if(rc)return rc;
     if(mb86H_debug_u32be_get(response+12)!=MB86H_RESIDENT_COMMAND_DEVICE_QUERY ||
-       mb86H_debug_u32be_get(response+16)!=page || response[24]!=MB86H_DEVICE_QUERY_VERSION ||
-       response[25]!=page || response[26]!=source)return -EPROTO;
+       mb86H_debug_u32be_get(response+16)!=page || response[24]!=page ||
+       response[25]!=source)return -EPROTO;
     rc=(int32_t)mb86H_debug_u32be_get(response+20);
     if(mb86H_debug_u32be_get(response+8)==MB86H_DEBUG_FATAL && rc<0)return rc;
     return mb86H_debug_u32be_get(response+8)==MB86H_DEBUG_OK && !rc ? 0 : -EPROTO;
@@ -33,11 +34,10 @@ int mb86H_device_query_overview(struct mb86H_session *s,const struct mb86H_sessi
     if(!out)return -EINVAL;
     rc=query(s,ops,ctx,MB86H_DEVICE_QUERY_OVERVIEW,0,response);if(rc)return rc;
     if(response[27])return -EPROTO;
-    for(i=4;i<9;++i)if(mb86H_query_word(response+24,i))return -EPROTO;
+    for(i=2;i<9;++i)if(mb86H_query_word(response+24,i))return -EPROTO;
     mb86H_query_overview_decode(response+24,&d);
-    if(d.rf_mask&~((1u<<MB86H_CHANNEL_COUNT)-1u) || d.stream_mask&~d.rf_mask ||
-       d.resident_abi!=MB86H_RESIDENT_ABI_VERSION ||
-       (d.window_version && d.window_version!=MB86H_STREAM_WINDOW_VERSION))return -EPROTO;
+    if(d.rf_mask&~((1u<<MB86H_CHANNEL_COUNT)-1u) || d.stream_mask&~d.rf_mask)
+        return -EPROTO;
     *out=d;return 0;
 }
 int mb86H_device_query_source(struct mb86H_session *s,const struct mb86H_session_ops *ops,
@@ -79,10 +79,9 @@ int mb86H_device_stream_window(struct mb86H_session *s,
     int rc;
     if(!s || !ops || source>=MB86H_CHANNEL_COUNT || !generation || !records)
         return -EINVAL;
-    mb86H_debug_u32be_put(data,MB86H_STREAM_WINDOW_VERSION);
-    mb86H_debug_u32be_put(data+4,generation);
-    mb86H_debug_u32be_put(data+8,sequence);
-    mb86H_debug_u32be_put(data+12,records);
+    mb86H_debug_u32be_put(data,generation);
+    mb86H_debug_u32be_put(data+4,sequence);
+    mb86H_debug_u32be_put(data+8,records);
     rc=mb86H_session_command(s,ops,ctx,MB86H_RESIDENT_COMMAND_STREAM_WINDOW,
         source,data,response);
     if(rc)return rc;
@@ -94,8 +93,8 @@ int mb86H_device_stream_window(struct mb86H_session *s,
        ((int32_t)mb86H_debug_u32be_get(response+20)!=0 &&
         (int32_t)mb86H_debug_u32be_get(response+20)!=1) ||
        !(mb86H_debug_u32be_get(response+12)&(1u<<source)) ||
-       mb86H_debug_u32be_get(response+16)!=sequence || response[24]!=MB86H_STREAM_WINDOW_VERSION ||
-       !response[25] || !(response[26]&(1u<<source)) ||
+       mb86H_debug_u32be_get(response+16)!=sequence || !response[24] ||
+       !(response[26]&(1u<<source)) ||
        mb86H_debug_u32be_get(response+28)!=generation ||
        mb86H_debug_u32be_get(response+32)!=sequence ||
        mb86H_debug_u32be_get(response+52)!=records)return -EPROTO;

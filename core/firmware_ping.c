@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "mb86H/firmware_ping.h"
+#include "mb86H/protocol/constants.h"
 
 #ifdef __KERNEL__
 #include <linux/string.h>
@@ -7,19 +8,14 @@
 #include <string.h>
 #endif
 
-static const uint8_t supported[] = "mAgicVISION_1";
-/* Deployed wire-family prefix; independent of the C/project namespace. */
-static const uint8_t identity[] = "mAgicVISION_";
-
 int mb86H_firmware_ping_validate(const uint8_t *data, size_t size)
 {
     if (!data)
         return MB86H_FIRMWARE_PING_MALFORMED;
-    if (size < sizeof(identity) - 1 || memcmp(data, identity, sizeof(identity) - 1) != 0)
-        return MB86H_FIRMWARE_PING_WRONG_DEVICE;
-    if (size != sizeof(supported) - 1)
-        return MB86H_FIRMWARE_PING_UNSUPPORTED_VERSION;
-    return memcmp(data, supported, sizeof(supported) - 1) == 0
+    if (size != MB86H_FIRMWARE_IDENTITY_BYTES)
+        return MB86H_FIRMWARE_PING_WRONG_IDENTITY;
+    return memcmp(data, MB86H_FIRMWARE_IDENTITY,
+                  MB86H_FIRMWARE_IDENTITY_BYTES) == 0
                ? MB86H_FIRMWARE_PING_SUPPORTED
-               : MB86H_FIRMWARE_PING_UNSUPPORTED_VERSION;
+               : MB86H_FIRMWARE_PING_WRONG_IDENTITY;
 }

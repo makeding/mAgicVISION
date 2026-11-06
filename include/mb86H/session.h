@@ -45,9 +45,9 @@ bool mb86H_session_matches(const struct mb86H_session *session,
                               unsigned int source);
 void mb86H_session_set_streaming(struct mb86H_session *session,
                                     bool streaming);
-/* Admit a resident only after its versioned public capability snapshot is
- * valid. All ordinary host sessions use DEVICE_QUERY v1; there is no native
- * STATUS-layout compatibility path. The caller may retain the overview for
+/* Admit a resident only after its public capability snapshot is valid. All
+ * ordinary host sessions use DEVICE_QUERY; there is no native STATUS-layout
+ * compatibility path. The caller may retain the overview for
  * source admission, but this function performs no device mutation. */
 int mb86H_session_prepare(struct mb86H_session *,
     const struct mb86H_session_ops *, void *, struct mb86H_device_overview *);

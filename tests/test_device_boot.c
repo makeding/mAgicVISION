@@ -54,7 +54,7 @@ int main(void)
     CHECK(device && !strcmp(device->name, "PIXELA PIX-DT295 ISDB-T/S Tuner") &&
           device->frontend_count == 1 &&
           device->delivery_systems == ((1U << MB86H_DVB_GR) | (1U << MB86H_DVB_BSCS)) &&
-          device->runtime_protocol == MB86H_RUNTIME_RESIDENT_V1 &&
+          device->runtime_protocol == MB86H_RUNTIME_RESIDENT &&
           device->firmware_target == MB86H_FIRMWARE_DT295 && device->usb_boot);
     CHECK(device->usb_boot->candidate_address == 0x000e0000u &&
           device->usb_boot->candidate_size == 0x00010000u);
@@ -98,7 +98,7 @@ int main(void)
           m.records[0].control.request_type == 0xc0 && m.records[1].control.request_type == 0xc0);
     device = mb86H_device_find(0x054cu, 0x04b2u);
     CHECK(device && device->firmware_target == MB86H_FIRMWARE_TORNE &&
-          device->runtime_protocol == MB86H_RUNTIME_RESIDENT_V1);
+          device->runtime_protocol == MB86H_RUNTIME_RESIDENT);
     device = mb86H_device_find(0x06b8u, 0x103bu);
     CHECK(device && device->firmware_target == MB86H_FIRMWARE_DT295);
     device = mb86H_device_find(0x06b8u, 0x103cu);

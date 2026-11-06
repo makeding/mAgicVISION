@@ -8,10 +8,10 @@
 #endif
 #include "mb86H/protocol/constants.h"
 
-/* Nine BE32 payload words after version/page/source/flags. Keep the shape
+/* BE32 payload words after page/source/flags. Keep the shape
  * canonical here; no native C struct is sent over either bus. */
 struct mb86H_device_overview {
-    uint32_t rf_mask,stream_mask,resident_abi,window_version;
+    uint32_t rf_mask,stream_mask;
 };
 struct mb86H_source_descriptor {
     uint32_t frequency_min,frequency_max,frequency_step;
@@ -36,12 +36,10 @@ static inline void mb86H_query_set_word(uint8_t data[40],unsigned word,uint32_t 
 static inline void mb86H_query_overview_encode(uint8_t d[40],const struct mb86H_device_overview *s)
 {
     mb86H_query_set_word(d,0,s->rf_mask);mb86H_query_set_word(d,1,s->stream_mask);
-    mb86H_query_set_word(d,2,s->resident_abi);mb86H_query_set_word(d,3,s->window_version);
 }
 static inline void mb86H_query_overview_decode(const uint8_t d[40],struct mb86H_device_overview *s)
 {
-    *s=(struct mb86H_device_overview){mb86H_query_word(d,0),mb86H_query_word(d,1),
-                                    mb86H_query_word(d,2),mb86H_query_word(d,3)};
+    *s=(struct mb86H_device_overview){mb86H_query_word(d,0),mb86H_query_word(d,1)};
 }
 static inline void mb86H_query_source_encode(uint8_t d[40],const struct mb86H_source_descriptor *s)
 {

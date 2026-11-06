@@ -35,7 +35,6 @@ static int command(struct mb86H_card *c, unsigned op,
     int rc;
     if (c->failed) return c->failed;
     memset(response, 0, 64);
-    data[0] = MB86H_CARD_VERSION;
     mb86H_debug_u32be_put(data + 4, c->generation);
     rc = c->ops->command(c->opaque, op, data, response);
     /* Transport failure is terminal: the command may have executed. */
@@ -45,8 +44,7 @@ static int command(struct mb86H_card *c, unsigned op,
     /* A dispatcher rejection precedes the v2 response format. */
     if (mb86H_debug_u32be_get(response + 8) != MB86H_DEBUG_OK && rc < 0)
         return result(rc);
-    if (response[24] != MB86H_CARD_VERSION || rc > 1 ||
-        mb86H_debug_u32be_get(response + 8) != MB86H_DEBUG_OK)
+    if (rc > 1 || mb86H_debug_u32be_get(response + 8) != MB86H_DEBUG_OK)
         return c->failed = -EPROTO;
     if ((op == MB86H_CARD_POWER_ON || op == MB86H_CARD_RESET) && rc >= 0)
         c->generation = mb86H_debug_u32be_get(response + 16);
@@ -109,12 +107,12 @@ static int read_bytes(struct mb86H_card *c, unsigned op,
         uint8_t data[40] = {0}, response[64];
         unsigned n, reported;
         int rc;
-        data[1] = MB86H_CARD_CHUNK;
-        data[2] = (uint8_t)(at >> 8); data[3] = (uint8_t)at;
+        data[0] = MB86H_CARD_CHUNK;
+        data[1] = (uint8_t)(at >> 8); data[2] = (uint8_t)at;
         rc = command(c, op, data, response);
         if (rc) return rc;
-        reported = ((unsigned)response[26] << 8) | response[27];
-        n = response[25];
+        reported = ((unsigned)response[25] << 8) | response[26];
+        n = response[24];
         if (reported > limit || (at && reported != total) || !n ||
             n > MB86H_CARD_CHUNK || at + n > reported)
             return c->failed = -EPROTO;
@@ -168,14 +166,14 @@ int mb86H_card_transfer(struct mb86H_card *c, const uint8_t *tx,
         *rx_length = MB86H_CARD_MAX_RX;
         return -EMSGSIZE;
     }
-    data[2] = (uint8_t)(tx_length >> 8); data[3] = (uint8_t)tx_length;
+    data[1] = (uint8_t)(tx_length >> 8); data[2] = (uint8_t)tx_length;
     mb86H_debug_u32be_put(data + 8, 3000);
     rc = command(c, MB86H_CARD_TX_BEGIN, data, response);
     for (at = 0; !rc && at < tx_length;) {
         unsigned n = (unsigned)tx_length - at;
         if (n > MB86H_CARD_CHUNK) n = MB86H_CARD_CHUNK;
         memset(data, 0, sizeof(data));
-        data[1] = (uint8_t)n; data[2] = (uint8_t)(at >> 8); data[3] = (uint8_t)at;
+        data[0] = (uint8_t)n; data[1] = (uint8_t)(at >> 8); data[2] = (uint8_t)at;
         memcpy(data + 8, tx + at, n);
         rc = command(c, MB86H_CARD_TX_DATA, data, response);
         at += n;

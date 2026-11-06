@@ -580,7 +580,9 @@ int mb86H_loader_install(struct mb86H_loader *loader,
         if (loader->target == MB86H_BOOTSTRAP_DT295) {
             rc = mb86H_session_exchange(ops->session, ops->session_ops, opaque,
                 MB86H_DEBUG_PING, 0, 0, 0, data, response);
-            if (rc || mb86H_be32_get(response+8) != MB86H_DEBUG_OK || mb86H_be32_get(response+12) != 1) {
+            if (rc || mb86H_be32_get(response+8) != MB86H_DEBUG_OK ||
+                mb86H_be32_get(response+12) != 1 ||
+                mb86H_be32_get(response+20) != MB86H_MIN_SUPPORTED_ABI) {
                 rc=rc ? rc : -EPROTO;
                 if (loader->preserve_all_ram) observe(ops,opaque,MB86H_LOADER_RESIDENT_SNAPSHOT,0,rc);
                 return rc;
@@ -598,7 +600,7 @@ int mb86H_loader_install(struct mb86H_loader *loader,
     observe(ops,opaque,MB86H_LOADER_CAPS,1,0);
     rc = dispatch(loader, ops, opaque, MB86H_RESIDENT_COMMAND_CAPABILITIES, 0, data, response);
     if (rc || mb86H_be32_get(response + MB86H_DEBUG_PACKET_OPERATION_OFFSET) != MB86H_DEBUG_OK ||
-        mb86H_be32_get(response + 16) != MB86H_RESIDENT_ABI_VERSION ||
+        mb86H_be32_get(response + 16) != MB86H_MIN_SUPPORTED_ABI ||
         memcmp(response + MB86H_DEBUG_PACKET_DATA_OFFSET,
                MB86H_FIRMWARE_IDENTITY, MB86H_FIRMWARE_IDENTITY_BYTES) ||
         response[MB86H_DEBUG_PACKET_DATA_OFFSET + 15] !=
@@ -725,7 +727,7 @@ static int update_capabilities(struct mb86H_loader *owner,
     const uint8_t *build=resident+MB86H_RESIDENT_BUILD_ID-MB86H_RESIDENT_BASE;
     int rc=dispatch(owner,ops,opaque,MB86H_RESIDENT_COMMAND_CAPABILITIES,0,data,response);
     if(rc || mb86H_be32_get(response+MB86H_DEBUG_PACKET_OPERATION_OFFSET)!=MB86H_DEBUG_OK ||
-       mb86H_be32_get(response+16)!=MB86H_RESIDENT_ABI_VERSION ||
+       mb86H_be32_get(response+16)!=MB86H_MIN_SUPPORTED_ABI ||
        memcmp(response+MB86H_DEBUG_PACKET_DATA_OFFSET,
               MB86H_FIRMWARE_IDENTITY,MB86H_FIRMWARE_IDENTITY_BYTES) ||
        memcmp(response+MB86H_DEBUG_PACKET_DATA_OFFSET+16,build,8) ||

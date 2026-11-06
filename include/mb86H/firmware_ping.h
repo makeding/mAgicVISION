@@ -12,11 +12,10 @@
 enum mb86H_firmware_ping_result {
     MB86H_FIRMWARE_PING_SUPPORTED = 0,
     MB86H_FIRMWARE_PING_MALFORMED = -2100,
-    MB86H_FIRMWARE_PING_WRONG_DEVICE = -2101,
-    MB86H_FIRMWARE_PING_UNSUPPORTED_VERSION = -2102,
+    MB86H_FIRMWARE_PING_WRONG_IDENTITY = -2101,
 };
 
-/* Accepts only the exact, non-NUL-terminated ASCII payload mAgicVISION_1. */
+/* Accepts only the exact, non-NUL-terminated canonical firmware identity. */
 int mb86H_firmware_ping_validate(const uint8_t *data, size_t size);
 
 #endif

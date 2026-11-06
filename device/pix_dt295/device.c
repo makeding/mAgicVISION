@@ -17,7 +17,7 @@ static const struct mb86H_device_info pix_dt295_devices[] = {
      .frontend_count = 1,
      .delivery_systems = (1U << MB86H_DVB_GR) | (1U << MB86H_DVB_BSCS),
      .usb_boot = &mb86H_pix_dt295_resident_boot_ops,
-     .runtime_protocol = MB86H_RUNTIME_RESIDENT_V1, .firmware_target = MB86H_FIRMWARE_DT295},
+     .runtime_protocol = MB86H_RUNTIME_RESIDENT, .firmware_target = MB86H_FIRMWARE_DT295},
     {.name = "PIXELA PIX-DT295W ISDB-T/S Tuner", .vendor = 0x06b8u, .product = 0x103cu,
      .frontend_count = 0, .delivery_systems = 0, .usb_boot = &mb86H_pix_dt295_boot_ops,
      .runtime_protocol = MB86H_RUNTIME_NONE},

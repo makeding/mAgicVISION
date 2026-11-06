@@ -7,7 +7,7 @@ static const struct mb86H_device_info sony_torne = {
     .product = USB_TORNE_PRODUCT_ID,
     .frontend_count = 1,
     .delivery_systems = 1U << MB86H_DVB_GR,
-    .runtime_protocol = MB86H_RUNTIME_RESIDENT_V1,
+    .runtime_protocol = MB86H_RUNTIME_RESIDENT,
     .firmware_target = MB86H_FIRMWARE_TORNE,
 };
 
