@@ -652,7 +652,7 @@ static void card_delay(void *opaque,unsigned milliseconds)
 static int download_firmware(struct usb_device *device, struct mb86H_loader *loader,
                               struct log_context *log, const char *directory,
                               const struct mb86H_loader *alternative,
-                              bool initialize, const struct capture_options *capture_options, unsigned capture_count)
+                              bool initialize, const struct capture_options *capture_options, unsigned capture_count, bool handoff)
 {
     const struct mb86H_loader original = *loader;
     struct firmware_context ctx = {.device = device, .log = log, .directory = directory};
@@ -688,7 +688,7 @@ static int download_firmware(struct usb_device *device, struct mb86H_loader *loa
     account(log, fprintf(log->file, "{\"event\":\"acquisition-trace\",\"enabled\":%s}\n",
                          (ctx.trace_flags&TRACE_ACQUISITION) ? "true" : "false"));
     int rc = 0;
-    for (unsigned round=0;round<(alternative?(capture_count?2u:3u):1u);++round) {
+    for (unsigned round=0;round<(alternative?((capture_count || handoff)?2u:3u):1u);++round) {
         const struct mb86H_loader *selected=round==1?alternative:&original;
         uint8_t reply[64]={0};
         rc=round?mb86H_loader_update(loader,&ops,&ctx,selected):
@@ -759,14 +759,15 @@ static int download_firmware(struct usb_device *device, struct mb86H_loader *loa
                               capture_options + segment);
     }
     ctx.restoring = 1;
-    int restored = initialize ? mb86H_loader_close(loader, &ops, &ctx) :
+    int restored = handoff && !rc ? mb86H_loader_handoff(loader,&ops,&ctx) :
+                   initialize ? mb86H_loader_close(loader, &ops, &ctx) :
                                     mb86H_loader_restore(loader, &ops, &ctx);
     account(log, fprintf(log->file,
         "{\"time\":%.6f,\"event\":\"%s\",\"result\":%d,\"exchanges\":%u,\"controls\":%u}\n",
-        timestamp(), initialize ? "firmware-close" : "restore", restored, ctx.exchanges, log->controls));
+        timestamp(), handoff && !rc ? "handoff" : initialize ? "firmware-close" : "restore", restored, ctx.exchanges, log->controls));
     printf("firmware_result=%d identity=%s %s_result=%d\n",
            firmware_rc, firmware_rc ? "unverified" : MB86H_FIRMWARE_IDENTITY,
-           initialize ? "firmware_close" : "restore", restored);
+           handoff && !rc ? "handoff" : initialize ? "firmware_close" : "restore", restored);
     return rc ? rc : restored;
 }
 
@@ -779,7 +780,7 @@ int main(int argc, char **argv)
     struct usb_libusb_identity identity;
     struct log_context log = {.file = stderr};
     const struct mb86H_device_info *info;
-    int rc = 0, close_rc = 0, capture, prepare, download, check_image, ota, record, sequence, start, ota_record, ota_sequence;
+    int rc = 0, close_rc = 0, capture, prepare, download, check_image, ota, record, sequence, start, ota_record, ota_sequence, handoff;
     struct capture_options recording[4] = {{0}};
     unsigned capture_count = 0;
     const char *directory = NULL;
@@ -796,7 +797,8 @@ int main(int argc, char **argv)
     card_probe_enabled = !strcmp(argv[1], "ota-card");
     ota_sequence = !strcmp(argv[1], "ota-capture-sequence");
     ota_record = !strcmp(argv[1], "ota-capture-pipe") || ota_sequence;
-    ota = !strcmp(argv[1], "ota") || card_probe_enabled || ota_record;
+    handoff = !strcmp(argv[1], "ota-handoff");
+    ota = !strcmp(argv[1], "ota") || card_probe_enabled || ota_record || handoff;
     sequence = !strcmp(argv[1], "capture-sequence") || ota_sequence;
     record = sequence || !strcmp(argv[1], "capture") || !strcmp(argv[1], "capture-pipe") || !strcmp(argv[1], "ota-capture-pipe");
     start = !strcmp(argv[1], "start");
@@ -926,7 +928,7 @@ int main(int argc, char **argv)
     rc = usb_libusb_observe_control(device, observe, &log);
     if (rc) goto done;
     if (download) {
-        rc = download_firmware(device, &loader, &log, directory, ota?&alternative:NULL, !ota_record && (start || record), record?recording:NULL, capture_count);
+        rc = download_firmware(device, &loader, &log, directory, ota?&alternative:NULL, !ota_record && (start || record), record?recording:NULL, capture_count, handoff);
         goto done;
     } else rc = prepare ? usb_libusb_prepare_boot0(device, &result) :
                    usb_libusb_observe_boot0(device, &result);
@@ -1011,6 +1013,7 @@ usage:
                     "       usbboot start VID PID FIRMWARE_BUNDLE NEW_EVIDENCE_DIRECTORY\n"
                     "       usbboot ota VID PID FIRMWARE_A FIRMWARE_B NEW_EVIDENCE_DIRECTORY\n"
                     "       usbboot ota-card VID PID FIRMWARE_A FIRMWARE_B NEW_EVIDENCE_DIRECTORY\n"
+                    "       usbboot ota-handoff VID PID FIRMWARE_A FIRMWARE_B NEW_EVIDENCE_DIRECTORY\n"
                     "       usbboot capture VID PID BUNDLE SOURCE FREQUENCY TSID|auto DURATION_MS NEW_DIRECTORY\n"
                     "       usbboot ota-capture-pipe VID PID A B SOURCE FREQUENCY TSID|auto DURATION_MS NEW_DIRECTORY (TS to fd 3)\n"
                     "       usbboot capture-pipe VID PID BUNDLE SOURCE FREQUENCY TSID|auto DURATION_MS NEW_DIRECTORY (TS to fd 3)\n"

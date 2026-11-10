@@ -560,6 +560,31 @@ int main(void)
             CHECK(m.shutdown_calls==shutdown_before+1);
             CHECK(!memcmp(m.resident,bundle+resident,MB86H_RESIDENT_BYTES));
             CHECK(m.window_writes==boot_writes);
+            mb86H_session_reset(&session);
+            CHECK(!mb86H_loader_parse(&adopted,bundle,total));
+            CHECK(!mb86H_loader_install(&adopted,&ops,&m));
+            CHECK(mb86H_loader_handoff(&adopted,&ops,&m)==-EINVAL);
+            adopted.preserve_all_ram=true;
+            ops.snapshot=snapshot;
+            CHECK(!mb86H_loader_update(&adopted,&ops,&m,&replacement));
+            preimage=adopted.resident_saved;
+            unsigned handoff_writes=m.image_writes,handoff_releases=m.releases;
+            m.bad_capability_build=true;
+            CHECK(mb86H_loader_handoff(&adopted,&ops,&m)==-EPROTO);
+            m.bad_capability_build=false;
+            CHECK(adopted.resident_saved==preimage && m.releases==handoff_releases);
+            m.cold_required=true;m.reinitializable=false;
+            CHECK(mb86H_loader_handoff(&adopted,&ops,&m)==-EBUSY);
+            CHECK(adopted.resident_saved==preimage && m.image_writes==handoff_writes);
+            m.cold_required=false;
+            CHECK(!mb86H_loader_handoff(&adopted,&ops,&m));
+            CHECK(!adopted.resident_saved && !adopted.adopted_original_resident &&
+                  adopted.adopted && adopted.resident_active &&
+                  adopted.resident==replacement.resident && m.releases==handoff_releases+1 &&
+                  m.image_writes==handoff_writes && m.window_writes==boot_writes);
+            CHECK(!memcmp(m.resident,update_bundle+resident,MB86H_RESIDENT_BYTES));
+            CHECK(!mb86H_loader_update(&adopted,&ops,&m,&original_view));
+            CHECK(!mb86H_loader_handoff(&adopted,&ops,&m));
             CHECK(!mb86H_loader_restore(&loader,&ops,&m));
             CHECK(!memcmp(m.resident,before,MB86H_RESIDENT_BYTES));
             m.recover_calls=recover_calls;

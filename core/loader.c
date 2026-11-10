@@ -901,13 +901,11 @@ int mb86H_loader_restore(struct mb86H_loader *loader,
     return rc;
 }
 
-int mb86H_loader_close(struct mb86H_loader *loader,
-                       const struct mb86H_loader_ops *ops, void *opaque)
+static int retain_resident(struct mb86H_loader *loader,
+                            const struct mb86H_loader_ops *ops, void *opaque)
 {
     int rc;
     if(!loader || !ops || !ops->release)return -EINVAL;
-    if(loader->target!=MB86H_BOOTSTRAP_DT295 || !loader->resident_active)
-        return mb86H_loader_restore(loader,ops,opaque);
     if(loader->recovery_error)return loader->recovery_error;
     if(!ops->session || !ops->session_ops)return -EINVAL;
     rc=mb86H_session_detach(ops->session,ops->session_ops,opaque);
@@ -916,6 +914,7 @@ int mb86H_loader_close(struct mb86H_loader *loader,
     if(loader->torne_boot0_saved)ops->release(opaque,loader->torne_boot0_saved);
     if(loader->torne_ts_ring_saved)ops->release(opaque,loader->torne_ts_ring_saved);
     loader->resident_saved=0;
+    loader->adopted_original_resident=0;
     loader->torne_boot0_saved=0;
     loader->torne_ts_ring_saved=0;
     loader->torne_ts_ring_snapshot=false;
@@ -929,4 +928,27 @@ int mb86H_loader_close(struct mb86H_loader *loader,
     /* The exact resident remains installed and callable for the next host. */
     loader->resident_active=true;
     return 0;
+}
+
+int mb86H_loader_close(struct mb86H_loader *loader,
+                       const struct mb86H_loader_ops *ops, void *opaque)
+{
+    if(!loader || !ops || !ops->release)return -EINVAL;
+    if(loader->target!=MB86H_BOOTSTRAP_DT295 || !loader->resident_active)
+        return mb86H_loader_restore(loader,ops,opaque);
+    return retain_resident(loader,ops,opaque);
+}
+
+int mb86H_loader_handoff(struct mb86H_loader *loader,
+                         const struct mb86H_loader_ops *ops, void *opaque)
+{
+    int rc;
+    if(!loader || !ops || !ops->release || !ops->snapshot || !ops->session ||
+       !ops->session_ops || !loader->preserve_all_ram ||
+       !loader->resident_active || !loader->resident_saved)return -EINVAL;
+    if(loader->recovery_error)return loader->recovery_error;
+    rc=update_ready(loader);
+    if(rc)return rc;
+    rc=update_capabilities(loader,ops,opaque,loader->resident);
+    return rc?rc:retain_resident(loader,ops,opaque);
 }

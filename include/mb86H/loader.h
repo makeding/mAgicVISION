@@ -124,6 +124,11 @@ int mb86H_loader_restore(struct mb86H_loader *loader,
  * separate loader_restore contract. */
 int mb86H_loader_close(struct mb86H_loader *loader,
                        const struct mb86H_loader_ops *ops, void *opaque);
+/* Explicit post-OTA owner handoff. Only a validated, snapshotted owner may
+ * retain the verified replacement after safe detach. Failure keeps snapshots;
+ * ordinary close/restore semantics are unchanged. */
+int mb86H_loader_handoff(struct mb86H_loader *,
+                         const struct mb86H_loader_ops *, void *opaque);
 
 /* Canonical complete preimage payload, with no OS/file or header policy.
  * size returns zero for missing snapshots. write returns the first sink
