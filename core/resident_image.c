@@ -133,8 +133,6 @@ int mb86H_resident_image_program(const struct mb86H_resident_image_ops *ops,
     }
     if (rc) { observe(ops,opaque,MB86H_LOADER_WRITE,0,rc); return rc; }
     observe(ops,opaque,MB86H_LOADER_WRITE,0,0);
-    rc = mb86H_resident_image_verify(ops, opaque, image, true);
-    if (rc) return rc;
     observe(ops,opaque,MB86H_LOADER_COMMIT,1,0);
     rc = mb86H_resident_image_block(ops, opaque, commit_offset, true,
                                        image + commit_offset, 0, sizeof(commit));

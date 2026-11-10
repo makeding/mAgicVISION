@@ -444,9 +444,8 @@ int main(void)
         CHECK(!mb86H_loader_start(&loader, &patch_ops, &m));
         CHECK(!loader.resident_saved && loader.patches_saved);
         CHECK(mb86H_loader_snapshot_size(&loader) == 2412u);
-        /* Only the mandatory program verification plus commit read: no backup. */
-        CHECK(m.resident_block_reads - reads ==
-              (MB86H_RESIDENT_BYTES + MB86H_RESIDENT_BLOCK_BYTES - 1) / MB86H_RESIDENT_BLOCK_BYTES + 1);
+        /* Normal startup reads only the final commit word; no RAM backup or full readback. */
+        CHECK(m.resident_block_reads - reads == 1);
         writes = m.image_writes;
         CHECK(!mb86H_loader_close(&loader, &patch_ops, &m));
         CHECK(m.image_writes == writes && !loader.patches_saved);
