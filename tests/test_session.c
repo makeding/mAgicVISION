@@ -11,9 +11,12 @@ struct fixture {
     uint32_t now, generation, source, ready_after;
     int failure, firmware_error, service_failure;
     bool ready, streaming, stale, zero_generation, initial_quiet, cancelled;
-    bool defer_stop, shutdown_pending, shutdown_complete, bad_window, window_wait;
+    bool defer_stop, defer_capture, same_gen_upgrade;
+    bool shutdown_pending, shutdown_complete, bad_window, window_wait;
+    bool window_inactive;
     int query_error, shutdown_historical_error;
     bool cold_required,reinitializable;
+    bool background_missing;
     unsigned stop_statuses;
     uint8_t tune[40];
 };
@@ -45,13 +48,18 @@ static int exchange(void *opaque, const uint8_t request[64], uint8_t response[64
             .flags = f->shutdown_complete ? 0 :
                 MB86H_DEVICE_STATE_STARTED | MB86H_DEVICE_STATE_INITIALIZED |
                 (f->ready && !acquiring ? MB86H_DEVICE_STATE_READY : 0) |
-                ((f->streaming || stopping) ? MB86H_DEVICE_STATE_CAPTURING : 0) |
-                (f->streaming ? MB86H_DEVICE_STATE_STREAM_READY : 0),
-            .capture_generation = (f->streaming || stopping) ? f->generation : 0,
-            .capture_mask = (f->streaming || stopping) ? 1u << f->source : 0,
+                (((f->streaming && (!f->defer_capture || !acquiring)) || stopping) ?
+                    MB86H_DEVICE_STATE_CAPTURING : 0) |
+                ((f->streaming && (!f->defer_capture || !acquiring)) ?
+                    MB86H_DEVICE_STATE_STREAM_READY : 0),
+            .capture_generation = ((f->streaming && (!f->defer_capture || !acquiring)) ||
+                stopping) ? f->generation : 0,
+            .capture_mask = ((f->streaming && (!f->defer_capture || !acquiring)) ||
+                stopping) ? 1u << f->source : 0,
         };
         if(f->cold_required)state.flags|=MB86H_DEVICE_STATE_COLD_REQUIRED;
         if(f->reinitializable)state.flags|=MB86H_DEVICE_STATE_REINITIALIZABLE;
+        if(!f->background_missing)state.flags|=MB86H_DEVICE_STATE_AUTONOMOUS_STREAM;
         mb86H_debug_u32be_put(response + 12, MB86H_RESIDENT_COMMAND_DEVICE_QUERY);
         mb86H_debug_u32be_put(response + 16, page);
         data[0] = page;
@@ -71,7 +79,7 @@ static int exchange(void *opaque, const uint8_t request[64], uint8_t response[64
         mb86H_debug_u32be_put(response + 12, 1);
         mb86H_debug_u32be_put(response + 16,
                                mb86H_debug_u32be_get(request + 28));
-        data[0] = 1;
+        data[0] = f->window_inactive ? 0 : 1;
         data[2] = 1;
         if (f->window_wait)
             mb86H_debug_u32be_put(response + 20, 1);
@@ -89,7 +97,9 @@ static int exchange(void *opaque, const uint8_t request[64], uint8_t response[64
         f->cancelled = cmd == MB86H_RESIDENT_COMMAND_STOP;
         if (f->cancelled) ++f->stops;
         f->source = mb86H_debug_u32be_get(request + 16);
-        ++f->generation;
+        if (!(cmd == MB86H_RESIDENT_COMMAND_TUNE && f->same_gen_upgrade &&
+              f->ready && !f->streaming && request[31]))
+            ++f->generation;
         f->ready = cmd == MB86H_RESIDENT_COMMAND_TUNE;
         f->streaming = f->ready && request[31];
         memcpy(f->tune, request + 24, 40);
@@ -143,6 +153,7 @@ int main(void)
     };
     uint8_t response[64];
     uint32_t sequence;
+    unsigned services_before;
     bool locked;
     struct mb86H_device_overview overview;
     /* A hardware due time between 10 ms ticks must remain authoritative,
@@ -154,12 +165,18 @@ int main(void)
     memset(&f, 0, sizeof(f));
     f.ready_after = 25;
     assert(!mb86H_session_tune(&s, &ops, &f, 0, &gr, false));
-    assert(f.now == 25);
+    assert(f.now == 0);
     memset(&f, 0, sizeof(f));
     mb86H_session_reset(&s);
     f.ready_after = 25;
     assert(!mb86H_session_tune(&s, &ops, &f, 0, &gr, false));
-    assert(f.now == 25); /* all transports share the fine tune cadence */
+    assert(f.now == 0); /* all transports return after RF admission */
+    memset(&f, 0, sizeof(f));
+    mb86H_session_reset(&s);
+    f.ready_after = 25;
+    assert(!mb86H_session_tune(&s, &ops, &f, 0, &gr, true));
+    assert(f.now == 0); /* an armed output need not wait for RF READY */
+    assert(!mb86H_session_locked(&s, &ops, &f, 0, &locked) && !locked);
     memset(&f, 0, sizeof(f));
     mb86H_session_reset(&s);
     assert(!mb86H_session_prepare(&s, &ops, &f, &overview));
@@ -170,8 +187,10 @@ int main(void)
     assert(f.tune[6] == 0xe0 && !f.tune[7] && !f.tune[8]);
     assert(!mb86H_session_locked(&s, &ops, &f, 0, &locked) && locked);
     sequence = s.sequence;
+    f.same_gen_upgrade = true;
     assert(!mb86H_session_stream(&s, &ops, &f, 0, true));
-    assert(s.streaming && s.sequence > sequence && f.tune[6] == 0xe0 && f.tune[7]);
+    assert(s.streaming && s.generation == 1 && s.sequence > sequence &&
+           f.tune[6] == 0xe0 && f.tune[7]);
     f.defer_stop = true;
     {
         unsigned calls = f.calls, services = f.services;
@@ -194,21 +213,22 @@ int main(void)
     assert(mb86H_session_tune(&s, &ops, &f, 0, &gr, false) == -EIO);
     assert(!s.request_valid);
     f.zero_generation = false; f.stale = true;
-    assert(mb86H_session_tune(&s, &ops, &f, 0, &gr, false) == -ETIMEDOUT);
+    assert(mb86H_session_tune(&s, &ops, &f, 0, &gr, true) == -ETIMEDOUT);
     assert(s.request_valid && s.stop_pending && f.stops == 2);
     f.stale = false;
     mb86H_session_reset(&s);
     memset(&f, 0, sizeof(f));
     s.tune_timeout_ms = 20;
     f.ready_after = 1000;
-    assert(mb86H_session_tune(&s, &ops, &f, 0, &gr, false) == -ETIMEDOUT);
+    f.defer_capture = true;
+    assert(mb86H_session_tune(&s, &ops, &f, 0, &gr, true) == -ETIMEDOUT);
     assert(f.stops == 1 && !s.request_valid && !s.stop_pending && !f.ready);
     f.ready_after = 0;
     assert(!mb86H_session_tune(&s, &ops, &f, 0, &gr, false));
     mb86H_session_reset(&s);
     memset(&f, 0, sizeof(f));
     f.service_failure = -ETIMEDOUT;
-    assert(mb86H_session_tune(&s, &ops, &f, 0, &gr, false) == -ETIMEDOUT);
+    assert(mb86H_session_tune(&s, &ops, &f, 0, &gr, true) == -ETIMEDOUT);
     assert(!f.stops); /* Ambiguous transport timeout is never replayed/cancelled. */
     mb86H_session_reset(&s);
     memset(&f, 0, sizeof(f));
@@ -228,10 +248,33 @@ int main(void)
     assert(!mb86H_session_initialize(&s, &ops, &f));
     assert(f.now == 0 && f.services == 1);
     assert(!mb86H_session_tune(&s, &ops, &f, 0, &gr, true));
+    services_before=f.services;
+    assert(!mb86H_session_stream_health(&s,&ops,&f));
+    assert(f.services==services_before);
+    f.background_missing=true;
+    assert(mb86H_session_stream_health(&s,&ops,&f)==MB86H_FE_WAIT);
+    f.now+=1000u;
+    assert(mb86H_session_stream_health(&s,&ops,&f)==-EOPNOTSUPP);
+    f.background_missing=false;
+    assert(!mb86H_session_stream_health(&s,&ops,&f));
+    f.query_error=-2602;
+    assert(mb86H_session_stream_health(&s,&ops,&f)==-2602);
+    f.query_error=0;
+    f.ready_after=f.now+5;
+    services_before=f.services;
+    assert(mb86H_session_stream_health(&s,&ops,&f)==MB86H_FE_WAIT);
+    assert(f.services==services_before+1);
+    f.now=f.ready_after;
+    assert(!mb86H_session_stream_health(&s,&ops,&f));
     assert(!mb86H_session_locked(&s, &ops, &f, 0, &locked) && locked);
     assert(!mb86H_device_stream_window(&s, &ops, &f, 0, s.generation, 7, 20));
     f.window_wait = true;
     assert(!mb86H_device_stream_window(&s, &ops, &f, 0, s.generation, 8, 20));
+    f.window_inactive = true;
+    assert(mb86H_device_stream_window(&s, &ops, &f, 0, s.generation, 1, 20) == -EPROTO);
+    assert(!mb86H_device_stream_window_deferred_start(&s, &ops, &f, 0, s.generation, 1, 20));
+    assert(mb86H_device_stream_window_deferred_start(&s, &ops, &f, 0, s.generation, 2, 20) == -EPROTO);
+    f.window_inactive = false;
     f.window_wait = false;
     f.bad_window = true;
     assert(mb86H_device_stream_window(&s, &ops, &f, 0, s.generation, 8, 20) == -EPROTO);
@@ -249,7 +292,7 @@ int main(void)
     assert(f.shutdown_complete && !s.request_valid);
     f.cold_required=true;f.shutdown_complete=f.shutdown_pending=false;
     s.request_valid=true;
-    unsigned services_before=f.services;
+    services_before=f.services;
     assert(mb86H_session_shutdown(&s,&ops,&f)==-EBUSY);
     assert(f.shutdown_complete && s.request_valid && f.services==services_before+1);
     f.shutdown_complete=f.shutdown_pending=false;
@@ -276,9 +319,11 @@ int main(void)
     memset(&f, 0, sizeof(f));
     f.ready_after = 20000;
     assert(!mb86H_session_tune(&s, &ops, &f, 0, &gr, false));
-    assert(f.now == 20000);
+    assert(f.now == 0);
     assert(mb86H_debug_u32be_get(f.tune) == 539143);
     assert(f.tune[6] == 0xe0 && !f.tune[7] && !f.tune[8]);
+    assert(!mb86H_session_locked(&s, &ops, &f, 0, &locked) && !locked);
+    f.now = 20000;
     assert(!mb86H_session_locked(&s, &ops, &f, 0, &locked) && locked);
     puts("session lifecycle tests passed");
     return 0;

@@ -7,10 +7,10 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CORE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 add_library(xz_winusb STATIC winusb/transport.c winusb/host.c winusb/binary_file.c
-    ${CORE}/core/loader.c ${CORE}/core/recovery.c ${CORE}/core/resident_image.c
+    ${CORE}/core/loader.c ${CORE}/core/bootstrap.c ${CORE}/core/recovery.c ${CORE}/core/resident_image.c
     ${CORE}/core/session.c ${CORE}/core/device_query.c ${CORE}/core/frontend.c ${CORE}/core/protocol.c
     ${CORE}/core/receiver.c ${CORE}/core/ts_framer.c ${CORE}/core/ts_mux.c
-    ${CORE}/usb/window.c ${CORE}/device/gv_mvp_xz/device.c)
+    ${CORE}/usb/window.c ${CORE}/device/gv_mvp_xz/device.c ${CORE}/device/gv_mvp_xz/boot.c)
 target_include_directories(xz_winusb PUBLIC ${CORE}/include winusb)
 target_compile_definitions(xz_winusb PUBLIC _WIN32_WINNT=0x0601 UNICODE _UNICODE)
 target_compile_options(xz_winusb PRIVATE -Wall -Wextra -Werror)

@@ -2,6 +2,7 @@
 #define MB86H_DVB_H
 #include <linux/device.h>
 #include "mb86H/frontend.h"
+#include "mb86H/protocol/device_query.h"
 struct mb86H_dvb;
 /* Backend calls serialize semantic FW commands for source 0 (GR) or 1
  * (BS/CS). Firmware owns the source switch. tune() completes only after old
@@ -12,6 +13,7 @@ struct mb86H_dvb_ops {
     int (*tune)(void *,unsigned,const struct mb86H_dvb_request *);
     int (*stream)(void *,unsigned,bool);
     int (*locked)(void *,unsigned,bool *);
+    int (*signal)(void *,unsigned,struct mb86H_source_signal *);
     void (*halt)(void *); /* cancel/drain transport callbacks, without calling receive */
 };
 struct mb86H_dvb *mb86H_dvb_attach(struct device *, const char *name,

@@ -15,9 +15,15 @@ int mb86H_device_query_source(struct mb86H_session *,const struct mb86H_session_
     void *,unsigned,struct mb86H_source_descriptor *);
 int mb86H_device_query_state(struct mb86H_session *,const struct mb86H_session_ops *,
     void *,unsigned,struct mb86H_source_state *);
+int mb86H_device_query_signal(struct mb86H_session *,const struct mb86H_session_ops *,
+    void *,unsigned,struct mb86H_source_signal *);
 /* Grants exactly one firmware capture window.  The response must echo the
  * requested generation, sequence and record count; it is never
  * retried because dispatch ambiguity could already have advanced the window. */
 int mb86H_device_stream_window(struct mb86H_session *,const struct mb86H_session_ops *,
     void *,unsigned,uint32_t,uint32_t,unsigned);
+/* XSW child: the first accepted window may acknowledge before the input
+ * engine starts.  Later windows still require capture_active in the reply. */
+int mb86H_device_stream_window_deferred_start(struct mb86H_session *,
+    const struct mb86H_session_ops *,void *,unsigned,uint32_t,uint32_t,unsigned);
 #endif

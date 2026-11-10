@@ -22,6 +22,11 @@ struct mb86H_source_state {
     uint32_t generation,phase,flags,capture_generation,window_sequence,tsid,capture_mask;
     int32_t error,owner_error;
 };
+/* A generation-fenced raw observation. The host converts only a documented
+ * demodulator kind; zero kind means no current measurement. */
+struct mb86H_source_signal {
+    uint32_t generation,kind,raw,aux;
+};
 
 static inline uint32_t mb86H_query_word(const uint8_t data[40],unsigned word)
 {
@@ -70,5 +75,15 @@ static inline void mb86H_query_state_decode(const uint8_t d[40],struct mb86H_sou
         .phase=mb86H_query_word(d,3),.flags=mb86H_query_word(d,4),
         .capture_generation=mb86H_query_word(d,5),.window_sequence=mb86H_query_word(d,6),
         .tsid=mb86H_query_word(d,7),.capture_mask=mb86H_query_word(d,8)};
+}
+static inline void mb86H_query_signal_encode(uint8_t d[40],const struct mb86H_source_signal *s)
+{
+    mb86H_query_set_word(d,0,s->generation);mb86H_query_set_word(d,1,s->kind);
+    mb86H_query_set_word(d,2,s->raw);mb86H_query_set_word(d,3,s->aux);
+}
+static inline void mb86H_query_signal_decode(const uint8_t d[40],struct mb86H_source_signal *s)
+{
+    *s=(struct mb86H_source_signal){mb86H_query_word(d,0),mb86H_query_word(d,1),
+        mb86H_query_word(d,2),mb86H_query_word(d,3)};
 }
 #endif

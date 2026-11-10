@@ -3,6 +3,9 @@
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/jiffies.h>
+#include <linux/math.h>
+#include <linux/math64.h>
+#include <media/dvb_math.h>
 #include <media/dvbdev.h>
 #include <media/dvb_frontend.h>
 #include <media/dvb_demux.h>
@@ -14,6 +17,8 @@
 struct mb86H_dvb_channel {
     struct mb86H_dvb *owner;
     unsigned source,feeds;
+    u32 tuned_frequency;
+    u32 tuned_stream_id;
     bool tuned,adapter_registered,frontend_registered,demux_initialized,dmxdev_initialized;
     bool source_selected;
     struct dvb_adapter adapter;
@@ -36,6 +41,78 @@ struct mb86H_dvb {
     int receive_error;
 };
 static short adapter_nr[DVB_MAX_ADAPTERS]={[0 ... DVB_MAX_ADAPTERS-1]=-1};
+
+/* TC90512 monitor equations use the same registers and fixed-point form as
+ * the in-kernel TC90522 driver. Values are milli-dB, not raw AGC units. */
+static bool signal_cnr(const struct mb86H_source_signal *s,s64 *mdb)
+{
+    s64 cn;
+    u32 p,tmp,raw=s->raw;
+    if(s->kind==MB86H_SIGNAL_TC90512_GR) {
+        if(!raw || raw>5505024u)return false;
+        p=(intlog10(5505024u)-intlog10(raw))*10u;
+        cn=24772;
+        cn+=div64_s64(43827LL*p,10)>>24;
+        tmp=p>>8;cn+=div64_s64(3184LL*tmp*tmp,10)>>32;
+        tmp=p>>13;cn-=div64_s64(128LL*tmp*tmp*tmp,10)>>33;
+        tmp=p>>18;cn+=div64_s64(192LL*tmp*tmp*tmp*tmp,1000)>>24;
+        *mdb=cn>>3;return true;
+    }
+    if(s->kind==MB86H_SIGNAL_TC90512_BS) {
+        u32 p4;
+        if(raw<3000u || raw>0xffffu)return false;
+        raw-=3000u;
+        p=int_sqrt(raw<<16);p4=raw*raw;
+        cn=div64_s64(-16346LL*p4*p,10)>>35;
+        cn+=(14341LL*p4)>>21;
+        cn-=(50259LL*raw*p)>>23;
+        cn+=(88977LL*raw)>>9;
+        cn-=(89565LL*p)>>11;
+        cn+=58857LL<<3;
+        *mdb=cn>>3;return true;
+    }
+    if(s->kind==MB86H_SIGNAL_DIB8000) {
+        u32 noise=(s->raw>>6)&0xffu,carrier=(s->aux>>6)&0xffu;
+        int ne=(s->raw&0x3fu),se=(s->aux&0x3fu);
+        if(!noise || !carrier || s->raw>0xffffu || s->aux>0xffffu)return false;
+        if(ne&0x20)ne-=0x40;
+        if(se&0x20)se-=0x40;
+        cn=div64_s64(((s64)intlog10(carrier)-(s64)intlog10(noise))*10000LL,
+            16777216LL)+(s64)(se-ne)*3010LL;
+        if(cn<-100000 || cn>100000)return false;
+        *mdb=cn;return true;
+    }
+    return false;
+}
+
+static int get_frontend(struct dvb_frontend *fe,struct dtv_frontend_properties *p)
+{
+    struct mb86H_dvb_channel *c=fe->demodulator_priv;
+    struct mb86H_dvb *d=c->owner;
+    struct mb86H_source_signal sample={0};
+    s64 cnr;
+    int rc=0;
+    p->cnr.len=1;
+    p->cnr.stat[0].scale=FE_SCALE_NOT_AVAILABLE;
+    p->cnr.stat[0].svalue=0;
+    mutex_lock(&d->control);
+    if(d->disconnected)rc=-ENODEV;
+    else if(d->suspended)rc=-EHOSTDOWN;
+    else if(c->source_selected && c->tuned &&
+            p->frequency==c->tuned_frequency &&
+            p->delivery_system==(c->source?SYS_ISDBS:SYS_ISDBT) &&
+            (!c->source || p->stream_id==c->tuned_stream_id) &&
+            d->ops->signal) {
+        rc=d->ops->signal(d->opaque,c->source,&sample);
+        if(rc==MB86H_FE_UNSUPPORTED)rc=0;
+        if(!rc && sample.kind && signal_cnr(&sample,&cnr)) {
+            p->cnr.stat[0].svalue=cnr;
+            p->cnr.stat[0].scale=FE_SCALE_DECIBEL;
+        }
+    }
+    mutex_unlock(&d->control);
+    return rc;
+}
 
 static void frontend_frequency_limits(const struct mb86H_dvb_caps caps[MB86H_CHANNEL_COUNT],
                                       u32 *minimum, u32 *maximum)
@@ -101,7 +178,8 @@ static int set_frontend(struct dvb_frontend *fe)
     rc=d->ops->tune(d->opaque,source,&r);
     mutex_lock(&d->receive);
     if(!rc){
-        c->source=source;c->source_selected=true;
+        c->source=source;c->source_selected=true;c->tuned_frequency=r.frequency;
+        c->tuned_stream_id=r.stream_id;
         rc=mb86H_stream_input_init(&d->input,d->stream_formats[source],source,
                                    d->caps[source].record_size);
         d->receive_error=0;
@@ -321,6 +399,7 @@ struct mb86H_dvb *mb86H_dvb_attach(struct device *parent, const char *name,
         frontend_frequency_limits(caps,&c->frontend.ops.info.frequency_min_hz,
                                   &c->frontend.ops.info.frequency_max_hz);
         c->frontend.ops.set_frontend=set_frontend;c->frontend.ops.read_status=read_status;
+        c->frontend.ops.get_frontend=get_frontend;
         c->frontend.ops.get_frontend_algo=frontend_algo;
         c->frontend.ops.tune=frontend_tune;
         rc=dvb_register_frontend(&c->adapter,&c->frontend);if(rc)goto fail;c->frontend_registered=true;

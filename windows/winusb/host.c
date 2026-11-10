@@ -248,22 +248,23 @@ int xz_prepare(struct xz_host *h,const struct xz_operation *operation)
     }
     return rc;
 }
-/* Same common SERVICE contract as Linux; this only schedules the FW owner.
- * RX must run separately while SERVICE makes EP81 output progress. */
+/* Keep bulk RX independent; poll the common read-only stream health contract. */
 static DWORD WINAPI service_thread(void *opaque)
 {
     struct xz_host *h=opaque;
-    while(WaitForSingleObject(h->stop,1)==WAIT_TIMEOUT) {
+    DWORD interval=1;
+    while(WaitForSingleObject(h->stop,interval)==WAIT_TIMEOUT) {
         EnterCriticalSection(&h->command_lock);
         int rc=0;
         if(WaitForSingleObject(h->stop,0)==WAIT_TIMEOUT && h->session.streaming)
-            rc=mb86H_session_service(&h->session,&session_ops,h);
+            rc=mb86H_session_stream_health(&h->session,&session_ops,h);
         LeaveCriticalSection(&h->command_lock);
-        if(rc) {
+        interval=rc==MB86H_FE_WAIT ? 1 : 100;
+        if(rc<0) {
             EnterCriticalSection(&h->queue_lock);
             mb86H_ts_receiver_core_receive(&h->receiver,rc,NULL,0);
             SetEvent(h->ready); LeaveCriticalSection(&h->queue_lock);
-            xz_log(h,"capture SERVICE failed rc=%d",rc);
+            xz_log(h,"capture health failed rc=%d",rc);
             SetEvent(h->stop); break;
         }
     }
@@ -275,7 +276,7 @@ int xz_tune(struct xz_host *h,const struct mb86H_dvb_request *request,
     if(!h || !request || (unsigned)request->system>=MB86H_CHANNEL_COUNT ||
        !mb86H_dvb_request_valid(&mb86H_frontend_caps[request->system],request)) return -EINVAL;
     /* Retire the old threads before storing the caller-owned operation: the
-     * SERVICE worker must never see a pipe/process handle from a new RPC. */
+     * Health worker must never see a pipe/process handle from a new RPC. */
     h->failure_stage="previous stream stop";
     int drained=xz_receive_stop(h);
     if(drained) return drained;
@@ -299,7 +300,7 @@ int xz_tune(struct xz_host *h,const struct mb86H_dvb_request *request,
         h->failure_stage="stream activation";
         rc=mb86H_session_stream(&h->session,&session_ops,h,request->system,true);
     }
-    /* SERVICE outlives this client RPC.  It must never retain its process or
+    /* Health polling outlives this client RPC. It must never retain its process or
      * pipe HANDLE (or the caller's stack operation) after the stream starts. */
     xz_operation_end(h);
     if(!rc) {

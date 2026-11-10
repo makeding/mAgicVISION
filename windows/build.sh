@@ -27,7 +27,7 @@ build/windows-x64/test-xz-wire
     windows/tests/test_ipc_protocol.c -o build/windows-x64/test-ipc-protocol
 build/windows-x64/test-ipc-protocol
 "${HOST_CC:-/usr/bin/cc}" -std=c11 -Wall -Wextra -Werror -Iinclude \
-    windows/tests/validate_bundle.c core/loader.c core/recovery.c \
+    windows/tests/validate_bundle.c core/loader.c core/bootstrap.c core/recovery.c \
     core/session.c core/device_query.c core/resident_image.c core/protocol.c \
     -o build/windows-x64/validate-bundle
 python3 windows/verify.py build/windows-x64

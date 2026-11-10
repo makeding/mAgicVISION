@@ -76,6 +76,7 @@ struct usb_host {
 	struct work_struct rx_work;
 	struct delayed_work service_work;
 	bool streaming;
+	bool tune_pending;
 	bool service_shutdown;
 	bool halt_attempted;
     bool tune_polling;
@@ -531,10 +532,15 @@ static int usb_tune(void *opaque, unsigned int source,
 		return -ESHUTDOWN;
 	}
 	x->stream_error = 0;
+    x->tune_pending=false;
     x->tune_polling=true;
 	rc = mb86H_session_tune(&x->session, &usb_session_ops, x, source,
 				    request, false);
     x->tune_polling=false;
+    if(!rc) {
+        x->tune_pending=true;
+        schedule_delayed_work(&x->service_work,0);
+    }
     if (rc) {
         dev_err(&x->intf->dev, "tune failed=%d last semantic response=%*phN\n",
                     rc, 64, x->last_response);
@@ -571,7 +577,7 @@ static int usb_stream(void *opaque, unsigned int source, bool enable)
 		goto out;
 	}
     if(!enable) {
-        x->streaming=false;x->stream_error=0;
+        x->streaming=false;x->tune_pending=false;x->stream_error=0;
         mb86H_session_set_streaming(&x->session, false);
         cancel_delayed_work(&x->service_work);
         /* Application RX ends before the single STOP exchange. */
@@ -587,6 +593,7 @@ static int usb_stream(void *opaque, unsigned int source, bool enable)
         rc=usb_start_rx(x);
         if(rc) { usb_stop_rx(x);goto out; }
     }
+    if(enable)x->tune_pending=false;
     rc = mb86H_session_stream(&x->session, &usb_session_ops, x, source, enable);
 	if (rc)
 		dev_err(&x->intf->dev,
@@ -627,6 +634,18 @@ static int usb_locked(void *opaque, unsigned int source, bool *locked)
 	mutex_unlock(&x->control_lock);
 	return rc;
 }
+static int usb_signal(void *opaque,unsigned source,struct mb86H_source_signal *out)
+{
+    struct usb_host *x=opaque;
+    int rc;
+    if(!out || source>1)return -EINVAL;
+    mutex_lock(&x->control_lock);
+    rc=x->service_shutdown?-ESHUTDOWN:
+        mb86H_device_query_signal(&x->session,&usb_session_ops,x,source,out);
+    if(!rc && out->generation!=x->session.generation)rc=-ESTALE;
+    mutex_unlock(&x->control_lock);
+    return rc;
+}
 
 static void usb_halt(void *opaque)
 {
@@ -652,6 +671,7 @@ static const struct mb86H_dvb_ops usb_dvb_ops = {
 	.tune = usb_tune,
 	.stream = usb_stream,
 	.locked = usb_locked,
+	.signal = usb_signal,
 	.halt = usb_halt,
 };
 
@@ -668,9 +688,10 @@ static void usb_service_work(struct work_struct *work)
 {
     struct usb_host *x=container_of(to_delayed_work(work),struct usb_host,service_work);
     int rc=0;
+    bool stream_settling=false;
     mutex_lock(&x->control_lock);
     if(READ_ONCE(x->service_shutdown) ||
-       (READ_ONCE(x->stopping) && !x->stream_error))goto out;
+       (READ_ONCE(x->stopping) && !x->stream_error && !x->tune_pending))goto out;
     if(x->streaming && READ_ONCE(x->rx_error)) {
         x->stream_error=READ_ONCE(x->rx_error);
         x->streaming=false;
@@ -679,13 +700,28 @@ static void usb_service_work(struct work_struct *work)
         rc=mb86H_session_stop(&x->session,&usb_session_ops,x,x->session.source);
         dev_err(&x->intf->dev,"receive failure FW stop result=%d\n",rc);
     }
-    if(x->streaming) {
+    if(x->tune_pending && !x->streaming) {
+        struct mb86H_source_state state;
         rc=mb86H_session_service(&x->session,&usb_session_ops,x);
+        if(!rc)rc=mb86H_device_query_state(&x->session,&usb_session_ops,x,
+            x->session.source,&state);
+        if(!rc)rc=state.owner_error?state.owner_error:state.error;
+        if(!rc && state.generation==x->session.generation &&
+           state.phase==MB86H_RESIDENT_PHASE_COMPLETE)x->tune_pending=false;
         if(rc) {
+            x->tune_pending=false;
+            dev_err(&x->intf->dev,"tune service failed result=%d\n",rc);
+            mb86H_dvb_stream_error(x->dvb,rc);
+        }
+    }
+    if(x->streaming) {
+        rc=mb86H_session_stream_health(&x->session,&usb_session_ops,x);
+        stream_settling=rc==MB86H_FE_WAIT;
+        if(rc<0) {
             x->stream_error=rc?rc:-EIO;
             x->streaming=false;
             dev_err(&x->intf->dev,
-                    "capture service failed result=%d\n", rc);
+                    "capture health failed result=%d\n", rc);
             mb86H_dvb_stream_error(x->dvb,x->stream_error);
             /* A transport/cleanup error cannot leave a live host reader. */
             usb_stop_rx(x);
@@ -695,8 +731,10 @@ static void usb_service_work(struct work_struct *work)
      * preceding partial bytes. Keep the terminal error observable until the
      * client closes/stops; these turns never resend a USB command. */
     if(x->stream_error)mb86H_dvb_stream_error(x->dvb,x->stream_error);
-    if(!READ_ONCE(x->service_shutdown) && (x->streaming || x->stream_error))
-        schedule_delayed_work(&x->service_work,msecs_to_jiffies(x->stream_error?100:1));
+    if(!READ_ONCE(x->service_shutdown) &&
+       (x->streaming || x->stream_error || x->tune_pending))
+        schedule_delayed_work(&x->service_work,
+            msecs_to_jiffies(x->tune_pending || stream_settling ? 1 : 100));
 out:
     mutex_unlock(&x->control_lock);
 }

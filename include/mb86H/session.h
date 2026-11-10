@@ -36,6 +36,8 @@ struct mb86H_session {
     uint32_t tune_poll_ms; /* Foreground cadence; zero selects the 1 ms tune default. */
     bool streaming;
     bool stop_pending;
+    bool background_waiting;
+    uint32_t background_wait_start;
 };
 
 void mb86H_session_reset(struct mb86H_session *session);
@@ -98,6 +100,10 @@ int mb86H_session_stop(struct mb86H_session *session,
                            const struct mb86H_session_ops *ops, void *opaque,
                            unsigned int source);
 int mb86H_session_service(struct mb86H_session *session,
+                              const struct mb86H_session_ops *ops, void *opaque);
+/* 0: steady autonomous stream; MB86H_FE_WAIT: continue acquisition or wait
+ * for the bounded background-start handshake; negative: terminal failure. */
+int mb86H_session_stream_health(struct mb86H_session *session,
                               const struct mb86H_session_ops *ops, void *opaque);
 int mb86H_session_locked(struct mb86H_session *session,
                              const struct mb86H_session_ops *ops, void *opaque,

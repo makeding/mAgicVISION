@@ -23,6 +23,7 @@ void mb86H_session_begin(struct mb86H_session *s, unsigned source,
     s->request_valid = generation != 0 && source < MB86H_CHANNEL_COUNT;
     s->streaming = false;
     s->stop_pending = false;
+    s->background_waiting = false;
 }
 
 bool mb86H_session_matches(const struct mb86H_session *s, unsigned source)
@@ -132,18 +133,23 @@ static bool query_complete(const struct mb86H_source_state *state,
      * The shared scheduler truthfully remains QUIET at generation zero. */
     bool initialized_idle = !generation && !ready && !streaming &&
         !state->generation && state->phase == MB86H_RESIDENT_PHASE_QUIET;
-    if ((!initialized_idle && state->phase != MB86H_RESIDENT_PHASE_COMPLETE) ||
-        !(state->flags & MB86H_DEVICE_STATE_INITIALIZED) ||
+    if (!(state->flags & MB86H_DEVICE_STATE_INITIALIZED) ||
         (state->flags & (MB86H_DEVICE_STATE_SHUTTING_DOWN |
-                         MB86H_DEVICE_STATE_RESTORE_PENDING)) ||
-        (!!(state->flags & MB86H_DEVICE_STATE_READY) != ready))
+                         MB86H_DEVICE_STATE_RESTORE_PENDING)))
         return false;
     if (generation && state->generation != generation)
         return false;
-    if (!!(state->flags & MB86H_DEVICE_STATE_CAPTURING) != streaming)
+    if (streaming)
+        return state->phase != MB86H_RESIDENT_PHASE_FAILED &&
+               (state->flags & (MB86H_DEVICE_STATE_CAPTURING |
+                                MB86H_DEVICE_STATE_STREAM_READY)) ==
+                   (MB86H_DEVICE_STATE_CAPTURING | MB86H_DEVICE_STATE_STREAM_READY) &&
+               state->capture_generation == generation &&
+               !!(state->capture_mask & (1u << source));
+    if ((!initialized_idle && state->phase != MB86H_RESIDENT_PHASE_COMPLETE) ||
+        (!!(state->flags & MB86H_DEVICE_STATE_READY) != ready))
         return false;
-    if (streaming && (!(state->flags & MB86H_DEVICE_STATE_STREAM_READY) ||
-                      state->capture_generation != generation))
+    if (!!(state->flags & MB86H_DEVICE_STATE_CAPTURING) != streaming)
         return false;
     return !!(state->capture_mask & (1u << source)) == streaming;
 }
@@ -364,6 +370,13 @@ int mb86H_session_tune(struct mb86H_session *s,
     if (rc || response_error(response)) return rc ? rc : response_error(response);
     generation = mb86H_debug_u32be_get(response + 16);
     if (!generation) return -EIO;
+    if (!streaming) {
+        /* A frontend tune admits one generation.  Its RF result is published
+         * by STATUS while the backend services the same request. */
+        s->request = *request;
+        mb86H_session_begin(s, source, generation);
+        return 0;
+    }
     rc = session_settle(s, ops, opaque, source, generation, true, streaming,
                         &deadline_expired);
     if (deadline_expired) {
@@ -421,6 +434,38 @@ int mb86H_session_service(struct mb86H_session *s,
         MB86H_RESIDENT_COMMAND_SERVICE, s->source, NULL, response);
     if (rc) return rc;
     return response_error(response);
+}
+
+int mb86H_session_stream_health(struct mb86H_session *s,
+                                const struct mb86H_session_ops *ops, void *opaque)
+{
+    struct mb86H_source_state state;
+    int rc;
+    if (!polling_valid(s, ops) || !s->request_valid || !s->streaming)
+        return -EINVAL;
+    rc=queried_state(s,ops,opaque,s->source,&state);
+    if(rc)return rc;
+    if(state.generation!=s->generation ||
+       !(state.flags&MB86H_DEVICE_STATE_STREAM_READY) ||
+       state.capture_generation!=s->generation)
+        return -EIO;
+    if(!(state.flags&MB86H_DEVICE_STATE_AUTONOMOUS_STREAM)) {
+        uint32_t now=ops->now_ms(opaque);
+        if(!s->background_waiting) {
+            s->background_wait_start=now;
+            s->background_waiting=true;
+        } else if((uint32_t)(now-s->background_wait_start)>=1000u) {
+            return -EOPNOTSUPP;
+        }
+    } else s->background_waiting=false;
+    if(state.phase!=MB86H_RESIDENT_PHASE_COMPLETE || s->background_waiting) {
+        if(state.phase==MB86H_RESIDENT_PHASE_CLEANUP ||
+           state.phase==MB86H_RESIDENT_PHASE_FAILED)
+            return -EIO;
+        rc=mb86H_session_service(s,ops,opaque);
+        return rc?rc:MB86H_FE_WAIT;
+    }
+    return 0;
 }
 
 int mb86H_session_locked(struct mb86H_session *s,
