@@ -144,6 +144,12 @@ libusb の確認用ツールは `build/usbctl`、起動・ファームウェア�
 Linux のカーネルドライバーとユーザーランドから同じ物理 USB 機器を同時に開かないでください。
 `usbboot start` は初期化後に変更した領域を復元します。`download` と `ota` は RAM 全体の退避・復元を行います。
 
+キャプチャ診断は XZ・torne・DT295 で共通です。`MB86H_TUNE_TRACE=1` は
+USB リクエストを追加せず、既存の調整中 SERVICE 応答を記録します。
+`MB86H_LOCK_TRACE=1` と `MB86H_SIGNAL_TRACE=1` は終了時の世代付き状態と
+信号の生値、`MB86H_RF_TRACE=1` は録画中の両方を記録します。
+これらの観測はストリーム開始の待機条件になりません。
+
 ```sh
 ./build/usbctl devices
 ./build/usbboot check-image 04bb 0530 firmware/firmware.bin

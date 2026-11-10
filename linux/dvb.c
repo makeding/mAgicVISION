@@ -5,7 +5,7 @@
 #include <linux/jiffies.h>
 #include <linux/math.h>
 #include <linux/math64.h>
-#include <media/dvb_math.h>
+#include <linux/int_log.h>
 #include <media/dvbdev.h>
 #include <media/dvb_frontend.h>
 #include <media/dvb_demux.h>

@@ -136,6 +136,12 @@ done:
     return rc;
 }
 
+/* Shared observation options; hardware-specific register probes are explicit
+ * debug capabilities, not alternate tune/stream/lock implementations. */
+enum capture_trace_flags {
+    TRACE_ACQUISITION=1u, TRACE_LOCK=2u, TRACE_REGISTERS=4u,
+    TRACE_SIGNAL=8u, TRACE_TUNE=16u, TRACE_STATE=32u, TRACE_RF=64u
+};
 /* Platform callbacks only: install/commit/identity/restore stay in core/loader. */
 struct firmware_context {
     struct usb_device *device;
@@ -147,7 +153,8 @@ struct firmware_context {
         unsigned controls, exchanges;
     } stages[MB86H_LOADER_STAGE_COUNT];
     int restoring;
-    bool acquisition_trace, tracing_tune, xz_lock_trace, xz_rf_trace, signal_trace;
+    bool tracing_tune;
+    unsigned trace_flags;
     struct mb86H_session *session;
     const struct mb86H_session_ops *session_ops;
 };
@@ -221,7 +228,20 @@ static void acquisition_observe(void *opaque, const uint8_t request[64],
 {
     struct firmware_context *ctx = opaque;
     uint8_t sample[64] = {0};
-    if (!ctx->acquisition_trace || !ctx->tracing_tune || ctx->restoring ||
+    if((ctx->trace_flags&TRACE_TUNE) && ctx->tracing_tune && !ctx->restoring && response &&
+       mb86H_debug_u32be_get(request+8)==MB86H_DEBUG_RESIDENT_DISPATCH &&
+       mb86H_debug_u32be_get(request+12)==MB86H_RESIDENT_COMMAND_SERVICE) {
+        static const char digits[]="0123456789abcdef";
+        char hex[129];
+        for(unsigned i=0;i<64;++i) {
+            hex[i*2]=digits[response[i]>>4];hex[i*2+1]=digits[response[i]&15];
+        }
+        hex[128]=0;
+        account(ctx->log,fprintf(ctx->log->file,
+            "{\"event\":\"tune-progress\",\"ns\":%" PRIu64 ",\"result\":%d,\"response\":\"%s\"}\n",
+            monotonic_ns(),result,hex));
+    }
+    if (!(ctx->trace_flags&TRACE_ACQUISITION) || !ctx->tracing_tune || ctx->restoring ||
         result || !response || ctx->log->failed ||
         mb86H_debug_u32be_get(request + 8) != MB86H_DEBUG_RESIDENT_DISPATCH ||
         mb86H_debug_u32be_get(request + 12) != MB86H_RESIDENT_COMMAND_SERVICE ||
@@ -421,7 +441,7 @@ static void *capture_write(void *opaque)
     return NULL;
 }
 /* Private debug-image observation, serialized by the existing USB owner. */
-static int xz_rf_observe(struct firmware_context *ctx,struct mb86H_session *session)
+static int register_observe(struct firmware_context *ctx,struct mb86H_session *session)
 {
     static const uint8_t ranges[][2]={{0x80,8},{0x8b,3},{0x96,1},{0xb0,1},{0xb2,8},{0xac,1},{0xda,1}};
     for(unsigned range=0;range<sizeof(ranges)/sizeof(ranges[0]);++range) {
@@ -446,6 +466,30 @@ static int xz_rf_observe(struct firmware_context *ctx,struct mb86H_session *sess
         if(rc)return rc;
     }
     return 0;
+}
+/* One RF observation path for every device, using the public query contract. */
+static int source_observe(struct firmware_context *ctx,struct mb86H_session *session,
+    const struct mb86H_session_ops *ops,unsigned source)
+{
+    int result=0;
+    if(ctx->trace_flags&(TRACE_STATE|TRACE_RF)) {
+        struct mb86H_source_state state={0};
+        int measured=mb86H_device_query_state(session,ops,ctx,source,&state);
+        account(ctx->log,fprintf(ctx->log->file,
+            "{\"event\":\"lock-observation\",\"source\":%u,\"result\":%d,"
+            "\"generation\":%u,\"phase\":%u,\"flags\":%u,\"error\":%d,\"owner_error\":%d}\n",
+            source,measured,state.generation,state.phase,state.flags,state.error,state.owner_error));
+        if(measured)result=measured;
+    }
+    if(ctx->trace_flags&(TRACE_SIGNAL|TRACE_RF)) {
+        struct mb86H_source_signal sample={0};
+        int measured=mb86H_device_query_signal(session,ops,ctx,source,&sample);
+        account(ctx->log,fprintf(ctx->log->file,
+            "{\"event\":\"signal-observation\",\"source\":%u,\"result\":%d,\"generation\":%u,\"kind\":%u,\"raw\":%u,\"aux\":%u}\n",
+            source,measured,sample.generation,sample.kind,sample.raw,sample.aux));
+        if(measured && measured!=MB86H_FE_UNSUPPORTED && !result)result=measured;
+    }
+    return result;
 }
 static int capture_firmware(struct firmware_context *ctx,
     struct mb86H_session *session, const struct mb86H_session_ops *ops,
@@ -507,9 +551,12 @@ static int capture_firmware(struct firmware_context *ctx,
     while (!rc && !stopped(ctx) &&
            (uint32_t)(monotonic_ms(ctx) - started) < options->duration_ms) {
         rc = atomic_load(&writer.error);
-        if(!rc && ctx->xz_rf_trace && source==0 && rf_sample<4 &&
+        if(!rc && (ctx->trace_flags&(TRACE_RF|TRACE_REGISTERS)) && rf_sample<4 &&
            (uint32_t)(monotonic_ms(ctx)-started)>=rf_due[rf_sample]) {
-            rc=xz_rf_observe(ctx,session);++rf_sample;
+            rc=source_observe(ctx,session,ops,source);
+            if(!rc && (ctx->trace_flags&TRACE_REGISTERS) && source==0)
+                rc=register_observe(ctx,session);
+            ++rf_sample;
         }
         if (!rc) {
             int health=mb86H_session_stream_health(session, ops, ctx);
@@ -517,15 +564,11 @@ static int capture_firmware(struct firmware_context *ctx,
             else delay_ms(ctx, health==MB86H_FE_WAIT ? 1 : 100);
         }
     }
-    if(ctx->signal_trace && !stopped(ctx) && !ctx->log->failed) {
-        struct mb86H_source_signal sample={0};
-        int measured=mb86H_device_query_signal(session,ops,ctx,source,&sample);
-        account(ctx->log,fprintf(ctx->log->file,
-            "{\"event\":\"signal-observation\",\"source\":%u,\"result\":%d,\"generation\":%u,\"kind\":%u,\"raw\":%u,\"aux\":%u}\n",
-            source,measured,sample.generation,sample.kind,sample.raw,sample.aux));
-        if(measured && measured!=MB86H_FE_UNSUPPORTED && !rc)rc=measured;
+    if(!stopped(ctx) && !ctx->log->failed) {
+        int measured=source_observe(ctx,session,ops,source);
+        if(measured && !rc)rc=measured;
     }
-    if (ctx->xz_lock_trace && !stopped(ctx) && !ctx->log->failed) {
+    if ((ctx->trace_flags&TRACE_LOCK) && !stopped(ctx) && !ctx->log->failed) {
         uint8_t data[40]={MB86H_RESIDENT_SOURCE_LOCK_OBSERVE},reply[64]={0};
         int observed=mb86H_session_command(session,ops,ctx,
             MB86H_RESIDENT_COMMAND_SOURCE_STATUS,source,data,reply);
@@ -627,17 +670,23 @@ static int download_firmware(struct usb_device *device, struct mb86H_loader *loa
     };
     struct mb86H_device_overview overview = {0};
     ctx.session = &session; ctx.session_ops = &session_ops;
-    const char *trace = getenv("MB86H_DT295_ACQUISITION_TRACE");
-    ctx.acquisition_trace = loader->target == MB86H_BOOTSTRAP_DT295 && trace && !strcmp(trace, "1");
-    trace=getenv("MB86H_XZ_LOCK_TRACE");
-    ctx.xz_lock_trace=loader->target==MB86H_BOOTSTRAP_XZ && trace && !strcmp(trace,"1");
-    trace=getenv("MB86H_XZ_RF_TRACE");
-    ctx.xz_rf_trace=loader->target==MB86H_BOOTSTRAP_XZ && trace && !strcmp(trace,"1");
-    if(ctx.xz_rf_trace)ctx.xz_lock_trace=true;
-    trace=getenv("MB86H_SIGNAL_TRACE");
-    ctx.signal_trace=trace && !strcmp(trace,"1");
+    static const struct { const char *environment; unsigned flags, target; } trace_options[]={
+        {"MB86H_DT295_ACQUISITION_TRACE",TRACE_ACQUISITION,MB86H_BOOTSTRAP_DT295},
+        {"MB86H_XZ_LOCK_TRACE",TRACE_LOCK,MB86H_BOOTSTRAP_XZ},
+        {"MB86H_XZ_RF_TRACE",TRACE_REGISTERS|TRACE_LOCK,MB86H_BOOTSTRAP_XZ},
+        {"MB86H_SIGNAL_TRACE",TRACE_SIGNAL,0},
+        {"MB86H_TUNE_TRACE",TRACE_TUNE,0},
+        {"MB86H_LOCK_TRACE",TRACE_STATE,0},
+        {"MB86H_RF_TRACE",TRACE_RF,0},
+    };
+    for(unsigned i=0;i<sizeof(trace_options)/sizeof(trace_options[0]);++i) {
+        const char *value=getenv(trace_options[i].environment);
+        if(value && !strcmp(value,"1") &&
+           (!trace_options[i].target || trace_options[i].target==loader->target))
+            ctx.trace_flags|=trace_options[i].flags;
+    }
     account(log, fprintf(log->file, "{\"event\":\"acquisition-trace\",\"enabled\":%s}\n",
-                         ctx.acquisition_trace ? "true" : "false"));
+                         (ctx.trace_flags&TRACE_ACQUISITION) ? "true" : "false"));
     int rc = 0;
     for (unsigned round=0;round<(alternative?(capture_count?2u:3u):1u);++round) {
         const struct mb86H_loader *selected=round==1?alternative:&original;

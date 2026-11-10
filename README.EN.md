@@ -144,6 +144,12 @@ The libusb verification tool is `build/usbctl`, and the boot/firmware verificati
 Do not open the same physical USB device simultaneously from the Linux kernel driver and userland.
 `usbboot start` initializes and restores changed regions. `download` and `ota` preserve and restore all RAM.
 
+Capture diagnostics use the same interfaces on XZ, torne and DT295. Set
+`MB86H_TUNE_TRACE=1` to log existing tune SERVICE replies without extra USB
+requests; `MB86H_LOCK_TRACE=1` and `MB86H_SIGNAL_TRACE=1` record the final
+generation-tagged state and raw signal measurement. `MB86H_RF_TRACE=1` samples
+both during capture. These observations do not gate stream startup.
+
 ```sh
 ./build/usbctl devices
 ./build/usbboot check-image 04bb 0530 firmware/firmware.bin
