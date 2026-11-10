@@ -881,7 +881,7 @@ static void usb_register_reader(struct usb_host *x)
     int rc;
     snprintf(serial, sizeof(serial), "%04x:%04x:%s", x->device->vendor,
              x->device->product, x->udev->serial ? x->udev->serial : dev_name(&x->udev->dev));
-    rc = mb86H_ccid_register(&usb_ccid_ops, x, x->device->name, serial);
+    rc = mb86H_ccid_try_register(&usb_ccid_ops, x, x->device->name, serial);
     x->ccid_registered = !rc;
     if (rc)
         dev_warn(&x->intf->dev, "CCID reader unavailable status=%d; DVB remains available\n", rc);
@@ -998,7 +998,7 @@ static void usb_disconnect(struct usb_interface *intf)
     /* Gadget teardown drains callbacks before DVB halt restores resident or
      * the physical owner is freed. No outstanding miscdevice file lifetime. */
     if (x->ccid_registered) {
-        mb86H_ccid_unregister(x);
+        mb86H_ccid_release(x);
         x->ccid_registered = false;
     }
 	if (x->dvb) {
@@ -1052,7 +1052,7 @@ static int usb_suspend(struct usb_interface *intf, pm_message_t message)
     cancel_delayed_work_sync(&x->service_work);
     mb86H_dvb_suspend(x->dvb);
     if (x->ccid_registered) {
-        mb86H_ccid_unregister(x);
+        mb86H_ccid_release(x);
         x->ccid_registered = false;
     }
     usb_stop_rx(x);
@@ -1134,4 +1134,3 @@ module_exit(usb_host_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("mb86H USB resident, ISDB DVB and per-device native CCID readers");
-MODULE_SOFTDEP("pre: dummy_hcd");

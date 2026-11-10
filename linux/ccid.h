@@ -2,6 +2,8 @@
 #define MB86H_CCID_H
 
 #include <linux/types.h>
+#include <linux/module.h>
+#include <linux/errno.h>
 #include "mb86H/card.h"
 
 /*
@@ -24,6 +26,31 @@ struct mb86H_ccid_ops {
 int mb86H_ccid_register(const struct mb86H_ccid_ops *ops, void *opaque,
                         const char *product, const char *serial);
 void mb86H_ccid_unregister(void *opaque);
+
+/* A successful registration holds the optional CCID module until teardown. */
+static inline int mb86H_ccid_try_register(const struct mb86H_ccid_ops *ops,
+        void *opaque, const char *product, const char *serial)
+{
+    int (*register_reader)(const struct mb86H_ccid_ops *, void *, const char *, const char *);
+    int rc;
+
+    register_reader = symbol_get(mb86H_ccid_register);
+    if (!register_reader) return -ENODEV;
+    rc = register_reader(ops, opaque, product, serial);
+    if (rc)
+        symbol_put(mb86H_ccid_register);
+    return rc;
+}
+
+static inline void mb86H_ccid_release(void *opaque)
+{
+    void (*unregister_reader)(void *) = symbol_get(mb86H_ccid_unregister);
+    if (unregister_reader) {
+        unregister_reader(opaque);
+        symbol_put(mb86H_ccid_unregister);
+    }
+    symbol_put(mb86H_ccid_register);
+}
 
 /* Provision dummy_hcd for simultaneous readers. Optional reader admission
  * failures are independent of DVB initialization and resume. Module lifetime
