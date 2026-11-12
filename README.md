@@ -13,7 +13,8 @@ mAgicVISION は、mb86 系テレビチューナー向けのドライバーです
 | --- | --- | --- | --- |
 | I社 GV-MVP/XZ〜XZ3 | `04bb:0530` | ISDB-T/ISDB-S | MB86H58A |
 | S社 torne CECH-ZD1 J | `054c:04b2` | ISDB-T | MB86H47A |
-| P社 PIX-DT295| `06b8:103b` | ISDB-T/ISDB-S | MB86M01 |
+| P社 PIX-DT295 (Rev.01) | `06b8:103b` | ISDB-T/ISDB-S | MB86M01 |
+| P社 PIX-DT295 (Rev.02) | `06b8:105c` | ISDB-T/ISDB-S | MB86M01 |
 
 
 * それぞれ１チューナーになります

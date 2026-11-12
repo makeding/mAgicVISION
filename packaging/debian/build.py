@@ -181,8 +181,11 @@ def build(args):
         for module in ('magicvision_usb', 'magicvision_ccid'):
             if ('obj-m += ' + module + '.o').encode() not in payload['Kbuild']:
                 raise ValueError('source revision does not build ' + module)
+        firmware_version = args.firmware_version or version
+        if not re.fullmatch(r'[0-9][a-zA-Z0-9.+~]*', firmware_version):
+            raise ValueError('invalid firmware package version')
         control(dkms, 'magicvision-usb-dkms', 'mb86H Series USB TV tuner and smart card drivers (DKMS)\n Linux DVB drivers for mb86H Series ISDB-T and ISDB-S receivers, with\n USB CCID smart card reader support. Builds magicvision_usb and\n magicvision_ccid for the installed kernel and integrates with udev and PC/SC.',
-                f'dkms (>= 2.8.7), kmod, udev, python3, libccid, pcscd, magicvision-firmware (= {version})')
+                f'dkms (>= 2.8.7), kmod, udev, python3, libccid, pcscd, magicvision-firmware (= {firmware_version})')
         archive(dkms, 'magicvision-usb-dkms')
         report['result'] = 'passed'
     except BaseException as error:
@@ -201,7 +204,8 @@ def build(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=ROOT / 'build/debian')
-    parser.add_argument('--version', required=True, help='matching external firmware package version')
+    parser.add_argument('--version', required=True, help='host package version')
+    parser.add_argument('--firmware-version', help='firmware package dependency version (defaults to --version)')
     parser.add_argument('--revision', default='HEAD', help='committed public source revision')
     parser.add_argument('--maintainer')
     args = parser.parse_args()

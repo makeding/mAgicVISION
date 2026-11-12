@@ -12,9 +12,10 @@
 #endif
 #include "mb86H/protocol/constants.h"
 
-/* The only Pixela DT target admitted by the resident Linux transport. */
+/* Pixela DT295 Rev.01 and Rev.02 are admitted by the resident Linux transport. */
 #define MB86H_PIX_DT295_VENDOR_ID 0x06b8u
 #define MB86H_PIX_DT295_PRODUCT_ID 0x103bu
+#define MB86H_PIX_DT295_REV02_PRODUCT_ID 0x105cu
 
 struct usb_boot_ops;
 struct mb86H_loader;

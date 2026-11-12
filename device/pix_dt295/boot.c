@@ -27,6 +27,7 @@ static const struct pix_dt295_profile_entry pix_dt295_profiles[] = {
     {0x06b8u, 0x1038u, {6u, {8u, 25u}, 100000u, false, true}},
     {0x06b8u, 0x1039u, {5u, {8u, 25u}, 1500000u, true, true}},
     {0x06b8u, 0x103bu, {7u, {0u, 0u}, 100000u, false, false}},
+    {0x06b8u, 0x105cu, {7u, {0u, 0u}, 100000u, false, false}},
     {0x06b8u, 0x103cu, {8u, {9u, 25u}, 100000u, false, true}},
 };
 

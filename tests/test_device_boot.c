@@ -56,6 +56,29 @@ int main(void)
           device->delivery_systems == ((1U << MB86H_DVB_GR) | (1U << MB86H_DVB_BSCS)) &&
           device->runtime_protocol == MB86H_RUNTIME_RESIDENT &&
           device->firmware_target == MB86H_FIRMWARE_DT295 && device->usb_boot);
+    {
+        const struct mb86H_device_info *rev02 = mb86H_device_find(
+            MB86H_PIX_DT295_VENDOR_ID, MB86H_PIX_DT295_REV02_PRODUCT_ID);
+        const struct mb86H_pix_dt295_profile *rev01_profile =
+            mb86H_pix_dt295_profile_find(MB86H_PIX_DT295_VENDOR_ID,
+                                         MB86H_PIX_DT295_PRODUCT_ID);
+        const struct mb86H_pix_dt295_profile *rev02_profile =
+            mb86H_pix_dt295_profile_find(MB86H_PIX_DT295_VENDOR_ID,
+                                         MB86H_PIX_DT295_REV02_PRODUCT_ID);
+        CHECK(rev02 && !strcmp(rev02->name, "PIXELA PIX-DT295 Rev.02 ISDB-T/S Tuner") &&
+              rev02->frontend_count == device->frontend_count &&
+              rev02->delivery_systems == device->delivery_systems &&
+              rev02->runtime_protocol == device->runtime_protocol &&
+              rev02->firmware_target == device->firmware_target &&
+              rev02->usb_boot == device->usb_boot);
+        CHECK(rev01_profile && rev02_profile &&
+              rev02_profile->native_model == rev01_profile->native_model &&
+              rev02_profile->capacitance[0] == rev01_profile->capacitance[0] &&
+              rev02_profile->capacitance[1] == rev01_profile->capacitance[1] &&
+              rev02_profile->monitor_period == rev01_profile->monitor_period &&
+              rev02_profile->timeout_retry == rev01_profile->timeout_retry &&
+              rev02_profile->capacitance_override == rev01_profile->capacitance_override);
+    }
     CHECK(device->usb_boot->candidate_address == 0x000e0000u &&
           device->usb_boot->candidate_size == 0x00010000u);
     CHECK(!device->usb_boot->observe(&io, &m, &result) &&
